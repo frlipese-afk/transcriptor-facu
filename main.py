@@ -73,6 +73,9 @@ input[type="hidden"] {{ display: none; }}
                 async function loginConGoogle() {{
                     await supabaseClient.auth.signInWithOAuth({{
                         provider: 'google',
+                        options: {{
+                            redirectTo: window.location.origin
+                        }}
                     }});
                 }}
 
