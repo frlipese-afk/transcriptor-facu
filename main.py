@@ -18,20 +18,20 @@ app = FastAPI()
 # --- CONFIGURACIÓN DE SERVICIOS ---
 client_groq = Groq()
 
-# Supabase (Base de datos)
-SUPABASE_URL = "https://tfjhtxentxhufvdckkin.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmamh0eGVudHhodWZ2ZGNra2luIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1NDYwODQsImV4cCI6MjEwMTEyMjA4NH0.CoFiYtDfDGFtsCTk7R2CUQk7GL1DHItGhRIkBsEoyKA"
+# Supabase
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Cloudflare R2 (Nube de audios)
 s3_client = boto3.client('s3',
-    endpoint_url='https://6b630abe0d5b78c44a70c4a720a0c045.r2.cloudflarestorage.com', 
-    aws_access_key_id='73a426845dd0aedde8c24fd59c2f9bd2',
-    aws_secret_access_key='71b9deb00f0ab26a7162d1d3ff4f2b3ab916838705d251a0e37c44ce29e276e8',
+    endpoint_url=os.environ.get("R2_ENDPOINT_URL"),
+    aws_access_key_id=os.environ.get("R2_ACCESS_KEY"),
+    aws_secret_access_key=os.environ.get("R2_SECRET_KEY"),
     region_name='auto'
 )
 BUCKET_NAME = 'transcriptor-audios'
-R2_PUBLIC_URL = 'https://pub-af8d124ed9bc47f19c25885232899998.r2.dev' 
+R2_PUBLIC_URL = os.environ.get("R2_PUBLIC_URL")
 
 
 
