@@ -9,6 +9,10 @@ import boto3
 import os
 import uuid
 
+import subprocess
+import glob
+import imageio_ffmpeg
+
 app = FastAPI()
 
 # --- CONFIGURACIÓN DE SERVICIOS ---
@@ -114,7 +118,7 @@ async def leer_inicio():
     """
 
 
-# --- FUNCIÓN DE TRANSCRIPCIÓN CON MINUTITOS CLICKEABLES ---
+# --- FUNCIÓN DE TRANSCRIPCIÓN PARA AUDIOS LARGOS (Con ffmpeg directo) ---
 @app.post("/transcribir", response_class=HTMLResponse)
 async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...)):
     # 1. Verificar créditos
@@ -128,32 +132,58 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
 
     audio_bytes = await audio.read()
     try:
-        # 2. Transcribir con Groq pidiendo los minutitos (verbose_json)
-        with open("temp_audio.wav", "wb") as f: f.write(audio_bytes)
-        with open("temp_audio.wav", "rb") as audio_file:
-            response_groq = client_groq.audio.transcriptions.create(
-                model="whisper-large-v3-turbo", 
-                file=audio_file, 
-                response_format="verbose_json"
-            )
+        # 2. Guardar el audio original temporalmente
+        extension = audio.filename.split('.')[-1].lower()
+        temp_original = f"temp_original.{extension}"
+        with open(temp_original, "wb") as f: f.write(audio_bytes)
         
-        # 3. Darle formato a los minutos y el texto
-        texto_plano = "" # Para guardar en la base de datos
-        texto_html = ""  # Para mostrar en la web con botones
-        for segmento in response_groq.segments:
-            inicio = segmento['start']
-            minutos = int(inicio // 60)
-            segundos = int(inicio % 60)
+        # 3. Cortar el audio con ffmpeg en pedazos de 20 minutos (1200 segundos)
+        # Esto lo convierte a WAV 16kHz mono, que es lo mejor para la IA
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        subprocess.run([
+            ffmpeg_exe, "-i", temp_original, 
+            "-f", "segment", "-segment_time", "600", 
+            "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", 
+            "temp_chunk_%03d.wav"
+        ], check=True, capture_output=True)
+        
+        # 4. Buscar todos los pedacitos que se crearon
+        chunks = sorted(glob.glob("temp_chunk_*.wav"))
+        
+        texto_plano = ""
+        texto_html = ""
+        
+        # 5. Mandar cada pedacito a Groq
+        for i, chunk_filename in enumerate(chunks):
+            with open(chunk_filename, "rb") as audio_file:
+                response_groq = client_groq.audio.transcriptions.create(
+                    model="whisper-large-v3-turbo", 
+                    file=audio_file, 
+                    response_format="verbose_json"
+                )
             
-            texto_plano += f"[{minutos:02d}:{segundos:02d}] {segmento['text']}\n"
-            texto_html += f"<span class='minuto' onclick='saltarA({inicio})'>[{minutos:02d}:{segundos:02d}]</span> {segmento['text']}<br>"
+            # 6. Ajustar los minutos (Sumamos 20 minutos por cada pedazo que pasó)
+            offset_segundos = i * 600.0
+            for segmento in response_groq.segments:
+                inicio_real = segmento['start'] + offset_segundos
+                minutos = int(inicio_real // 60)
+                segundos = int(inicio_real % 60)
+                
+                texto_plano += f"[{minutos:02d}:{segundos:02d}] {segmento['text']}\n"
+                texto_html += f"<span class='minuto' onclick='saltarA({inicio_real})'>[{minutos:02d}:{segundos:02d}]</span> {segmento['text']}<br>"
+            
+            # Borramos el pedacito para no llenar el disco
+            os.remove(chunk_filename)
+        
+        # Borramos el original temporal
+        if os.path.exists(temp_original): os.remove(temp_original)
 
-        # 4. Subir el audio a Cloudflare R2
+        # 7. Subir el audio COMPLETO original a Cloudflare R2
         nombre_archivo_nube = f"{uuid.uuid4()}_{audio.filename}"
         s3_client.put_object(Bucket=BUCKET_NAME, Key=nombre_archivo_nube, Body=audio_bytes, ContentType=audio.content_type)
         url_audio = f"{R2_PUBLIC_URL}/{nombre_archivo_nube}"
         
-        # 5. Guardar en el historial (Supabase)
+        # 8. Guardar en el historial
         supabase.table("transcripciones").insert({
             "user_email": email,
             "titulo": audio.filename,
@@ -161,13 +191,13 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
             "audio_url": url_audio
         }).execute()
     except Exception as e:
-        return f"Error: {e}"
+        return f"Error procesando el audio: {e}"
 
-    # 6. Descontar crédito
+    # 9. Descontar crédito
     nuevos_creditos = creditos - 1
     supabase.table("usuarios").update({"creditos": nuevos_creditos}).eq("email", email).execute()
 
-    # 7. Mostrar el resultado en pantalla
+    # 10. Mostrar el resultado
     return f"""
     <html>
         <head><title>Resultado</title>
@@ -177,17 +207,7 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
             .texto {{ white-space: pre-wrap; font-size: 18px; line-height: 1.8; }}
             .creditos {{ color: #888; font-size: 14px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px;}}
             button {{ background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; text-decoration: none;}}
-            
-            /* Estilo para los minutitos */
-            .minuto {{ 
-                color: #007bff; 
-                cursor: pointer; 
-                font-weight: bold; 
-                background: #e7f1ff; 
-                padding: 2px 6px; 
-                border-radius: 4px; 
-                margin-right: 5px;
-            }}
+            .minuto {{ color: #007bff; cursor: pointer; font-weight: bold; background: #e7f1ff; padding: 2px 6px; border-radius: 4px; margin-right: 5px; }}
             .minuto:hover {{ background: #007bff; color: white; }}
         </style>
         </head>
@@ -200,7 +220,6 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
                 <br>
                 <a href="/historial?email={email}"><button>📚 Ver mi historial</button></a>
             </div>
-            
             <script>
                 function saltarA(segundos) {{
                     const audio = document.getElementById('reproductor');
