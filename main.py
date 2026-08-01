@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-load_dotenv() # Esto le dice a Python que lea el archivo .env
+load_dotenv()
 
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import HTMLResponse
@@ -9,43 +9,113 @@ import os
 
 app = FastAPI()
 
-# --- CONFIGURACIÓN DE SERVICIOS ---
-# Groq
+# Configuración de servicios
 client_groq = Groq()
 
-# Supabase
-url_supabase: str = os.environ.get("SUPABASE_URL")
-key_supabase: str = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(url_supabase, key_supabase)
+# Estas son las llaves públicas de Supabase (no son secretas, está bien que se vean en la web)
+SUPABASE_URL = "https://tfjhtxentxhufvdckkin.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmamh0eGVudHhodWZ2ZGNra2luIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1NDYwODQsImV4cCI6MjEwMTEyMjA4NH0.CoFiYtDfDGFtsCTk7R2CUQk7GL1DHItGhRIkBsEoyKA"
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- PÁGINA PRINCIPAL ---
+# --- PÁGINA PRINCIPAL CON LOGIN DE GOOGLE ---
 @app.get("/", response_class=HTMLResponse)
 async def leer_inicio():
-    return """
+    return f"""
     <html>
         <head>
             <title>Transcriptor Facu</title>
+            <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
             <style>
-                body { font-family: Arial; max-width: 500px; margin: 40px auto; text-align: center; background-color: #ffffff; color: #333;}
-                input, button { margin: 10px; padding: 12px; width: 80%; box-sizing: border-box; border-radius: 5px; border: 1px solid #ccc;}
-                button { background: #007bff; color: white; border: none; cursor: pointer;}
+                body {{ font-family: Arial; max-width: 500px; margin: 40px auto; text-align: center; background-color: #f8f9fa; color: #333;}}
+                .caja {{ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-top: 20px; }}
+                button {{ background: #007bff; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 10px;}}
+                .google-btn {{ background: #db4437; }}
+                input[type="file"] {{ width: 80%; padding: 10px; margin: 10px auto; border-radius: 5px; border: 1px solid #ccc; }}
+input[type="hidden"] {{ display: none; }}
             </style>
         </head>
         <body>
-            <h1>🎙️ Transcriptor Facu</h1>
-            <form action="/transcribir" method="post" enctype="multipart/form-data">
-                <input type="email" name="email" placeholder="Tu email" required><br>
-                <input type="file" name="audio" accept="audio/*" required><br>
-                <button type="submit">Transcribir (Gasta 1 crédito)</button>
-            </form>
+            <div class="caja">
+                <h1>🎙️ Transcriptor Facu</h1>
+                
+                <!-- BOTÓN DE LOGIN (Visible si no estás logueado) -->
+                <div id="login-box">
+                    <p>Ingresá para empezar a transcribir tus clases</p>
+                    <button class="google-btn" onclick="loginConGoogle()">Iniciar sesión con Google</button>
+                </div>
+
+                <!-- FORMULARIO DE TRANSCRIPCIÓN (Oculto hasta que te logueás) -->
+                <div id="app-box" style="display: none;">
+                    <p>Hola, <b id="user-email"></b> 👋</p>
+                    <p>Créditos disponibles: <b id="creditos">Cargando...</b></p>
+                    <form action="/transcribir" method="post" enctype="multipart/form-data">
+                        <input type="hidden" name="email" id="hidden-email">
+                        <input type="file" name="audio" accept="audio/*" required><br>
+                        <button type="submit">Transcribir (Gasta 1 crédito)</button>
+                    </form>
+                    <button onclick="cerrarSesion()" style="background: #6c757d; margin-top: 20px;">Cerrar sesión</button>
+                </div>
+            </div>
+
+            <script>
+                // Conexión a Supabase desde el navegador
+                const supabaseClient = supabase.createClient('{SUPABASE_URL}', '{SUPABASE_KEY}');
+
+                // Reviso si ya está logueado al entrar a la página
+                async function checkUser() {{
+                    const {{ data: {{ session }} }} = await supabaseClient.auth.getSession();
+                    if (session) {{
+                        mostrarApp(session.user.email);
+                    }}
+                }}
+
+                // Función para loguear con Google
+                async function loginConGoogle() {{
+                    await supabaseClient.auth.signInWithOAuth({{
+                        provider: 'google',
+                    }});
+                }}
+
+                // Función para mostrar la app una vez logueado
+                async function mostrarApp(email) {{
+                    document.getElementById('login-box').style.display = 'none';
+                    document.getElementById('app-box').style.display = 'block';
+                    document.getElementById('user-email').innerText = email;
+                    document.getElementById('hidden-email').value = email;
+                    
+                    // Busco los créditos del usuario en la base de datos
+                    // OJO: Esto es una llamada de ejemplo, la haremos segura después
+                    try {{
+                        let res = await fetch(`https://tfjhtxentxhufvdckkin.supabase.co/rest/v1/usuarios?email=eq.${{email}}`, {{
+                            headers: {{ "apikey": "{SUPABASE_KEY}" }}
+                        }});
+                        let data = await res.json();
+                        if(data.length > 0) {{
+                            document.getElementById('creditos').innerText = data[0].creditos;
+                        }} else {{
+                            document.getElementById('creditos').innerText = "No tienes créditos. Pide al admin.";
+                        }}
+                    }} catch(e) {{
+                        document.getElementById('creditos').innerText = "Error al cargar créditos";
+                    }}
+                }}
+
+                // Función para cerrar sesión
+                async function cerrarSesion() {{
+                    await supabaseClient.auth.signOut();
+                    location.reload();
+                }}
+
+                // Ejecuto apenas carga la página
+                checkUser();
+            </script>
         </body>
     </html>
     """
 
-# --- FUNCIÓN DE TRANSCRIPCIÓN ---
+# --- FUNCIÓN DE TRANSCRIPCIÓN (Quedó igual por ahora) ---
 @app.post("/transcribir", response_class=HTMLResponse)
 async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...)):
-    # 1. Buscar usuario en Supabase
     response_db = supabase.table("usuarios").select("creditos").eq("email", email).execute()
     
     if not response_db.data:
@@ -56,7 +126,6 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
     if creditos <= 0:
         return f"<h3>No tenés créditos, {email}.</h3><a href='/'>Volver</a>"
 
-    # 2. Transcribir
     audio_bytes = await audio.read()
     try:
         with open("temp_audio.wav", "wb") as f:
@@ -70,18 +139,16 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
     except Exception as e:
         return f"Error al transcribir: {e}"
 
-    # 3. Descontar crédito en Supabase
     nuevos_creditos = creditos - 1
     supabase.table("usuarios").update({"creditos": nuevos_creditos}).eq("email", email).execute()
 
-    # 4. Devolver HTML bonito
     return f"""
     <html>
         <head>
             <title>Resultado</title>
             <style>
-                body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; background-color: #ffffff; color: #333; }}
-                .caja {{ background: #f4f7f6; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
+                body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; background-color: #f8f9fa; color: #333; }}
+                .caja {{ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
                 .texto {{ white-space: pre-wrap; font-size: 18px; line-height: 1.6; }}
                 .creditos {{ color: #888; font-size: 14px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px;}}
                 button {{ background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; text-decoration: none;}}
@@ -99,10 +166,9 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
     </html>
     """
 
-# --- PANEL DE ADMINISTRACIÓN SECRETO ---
+# --- PANEL DE ADMINISTRACIÓN (Quedó igual por ahora) ---
 @app.get("/admin-secreto", response_class=HTMLResponse)
 async def panel_admin():
-    # Obtener todos los usuarios
     response = supabase.table("usuarios").select("*").execute()
     usuarios = response.data
     
@@ -142,15 +208,12 @@ async def panel_admin():
 
 @app.post("/agregar-creditos")
 async def agregar_creditos(email: str = Form(...), cantidad: int = Form(...)):
-    # Fijarse si el usuario ya existe
     res = supabase.table("usuarios").select("creditos").eq("email", email).execute()
     if res.data:
-        # Si existe, le suma los créditos
         creditos_actuales = res.data[0]['creditos']
         nuevos = creditos_actuales + cantidad
         supabase.table("usuarios").update({"creditos": nuevos}).eq("email", email).execute()
     else:
-        # Si no existe, lo crea con esos créditos
         supabase.table("usuarios").insert({"email": email, "creditos": cantidad}).execute()
     
     return "<h3>¡Créditos actualizados! Volvé al panel.</h3><a href='/admin-secreto'>Volver al panel</a>"
