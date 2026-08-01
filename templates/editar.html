@@ -85,20 +85,63 @@
 
         const cajaTexto = document.getElementById('caja-texto');
 
-        // Bloqueamos la tecla Enter para que no haga saltos de línea manuales
         cajaTexto.addEventListener('keydown', function(e) {
+            const sel = window.getSelection();
+            if (!sel.rangeCount) return;
+            const range = sel.getRangeAt(0);
+
+            // 1. Bloquear Enter siempre
             if (e.key === 'Enter') {
-                e.preventDefault(); // Esto cancela el salto de línea
+                e.preventDefault();
+                return;
+            }
+
+            const isActionKey = e.key === 'Backspace' || e.key === 'Delete';
+            const isTyping = e.key.length === 1; 
+
+            // 2. Si hay texto seleccionado (resaltado en azul)
+            if (!sel.isCollapsed) {
+                if (isActionKey || isTyping) {
+                    const minutes = document.querySelectorAll('.minuto');
+                    for (let i = 0; i < minutes.length; i++) {
+                        if (range.intersectsNode(minutes[i])) {
+                            e.preventDefault();
+                            return;
+                        }
+                    }
+                }
+            } else {
+                // 3. Si NO hay texto seleccionado (solo el cursor parpadeando)
+                let container = range.startContainer;
+                let parent = container.nodeType === 3 ? container.parentElement : container;
+
+                // ZONA DE SEGURIDAD: Si intentan escribir o borrar
+                if (isTyping || isActionKey) {
+                    // Si el cursor NO está adentro de un 'texto-editable', bloqueamos TODAS las teclas
+                    if (!parent.classList.contains('texto-editable')) {
+                        e.preventDefault();
+                        return;
+                    }
+
+                    // Si están adentro del texto, revisamos los bordes para que no se coman el minutito
+                    if (e.key === 'Backspace' && range.startOffset === 0) {
+                        e.preventDefault(); // Bloquea borrar hacia atrás si está en el inicio
+                        return;
+                    }
+                    if (e.key === 'Delete') {
+                        if (container.nodeType === 3 && range.startOffset === container.length) {
+                            e.preventDefault(); // Bloquea suprimir si está en el final del texto
+                            return;
+                        }
+                    }
+                }
             }
         });
 
         // Antes de enviar el formulario, copiamos el texto y lo limpiamos
         document.getElementById('form-edicion').addEventListener('submit', function(e) {
             let texto = cajaTexto.innerText;
-            
-            // Limpiamos saltos de línea dobles y espacios raros
             texto = texto.replace(/\n\n/g, '\n').trim();
-            
             document.getElementById('texto-oculto').value = texto;
         });
     </script>
