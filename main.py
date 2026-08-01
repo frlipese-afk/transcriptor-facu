@@ -52,21 +52,19 @@ ESTADOS_TRANSCRIPCION = {}
 
 # --- 1. RUTA QUE RECIBE EL AUDIO Y EMPIEZA A TRABAJAR POR DETRÁS ---
 @app.post("/iniciar-transcripcion")
-async def iniciar_transcripcion(background_tasks: BackgroundTasks, email: str = Form(...), audio: UploadFile = File(...)):
+async def iniciar_transcripcion(background_tasks: BackgroundTasks, email: str = Form(...), motor: str = Form(...), audio: UploadFile = File(...)):
     job_id = str(uuid.uuid4())
     audio_bytes = await audio.read()
     
-    # Guardamos el estado inicial
-    ESTADOS_TRANSCRIPCION[job_id] = {"estado": "cortando", "porcentaje": 5}
+    ESTADOS_TRANSCRIPCION[job_id] = {"estado": "iniciando", "porcentaje": 5}
     
-    # Le decimos a Python: "Empezá a transcribir, pero no me tengas esperando"
-    background_tasks.add_task(transcribir_en_fondo, job_id, email, audio.filename, audio.content_type, audio_bytes)
+    # Le pasamos el motor a la función de fondo
+    background_tasks.add_task(transcribir_en_fondo, job_id, email, audio.filename, audio.content_type, audio_bytes, motor)
     
-    # Le respondemos a la página el ID para que empiece a preguntar cómo va
     return {"job_id": job_id}
 
 # --- 2. LA FUNCIÓN QUE HACE EL TRABAJO DURO (POR DETRÁS) ---
-def transcribir_en_fondo(job_id: str, email: str, filename: str, content_type: str, audio_bytes: bytes):
+def transcribir_en_fondo(job_id: str, email: str, filename: str, content_type: str, audio_bytes: bytes, motor: str):
     try:
         extension = filename.split('.')[-1].lower()
         temp_original = f"temp_{job_id}.{extension}"
@@ -89,30 +87,34 @@ def transcribir_en_fondo(job_id: str, email: str, filename: str, content_type: s
         texto_plano = ""
         texto_html = ""
         
+        # Elegimos el modelo de Groq según lo que pidió el usuario
+        modelo_groq = "whisper-large-v3-turbo" if motor == "groq_turbo" else "whisper-large-v3"
+            
         for i, chunk_filename in enumerate(chunks):
-            ESTADOS_TRANSCRIPCION[job_id] = {
-                "estado": "transcribiendo", 
-                "actual": i + 1, 
-                "total": total_chunks,
-                "porcentaje": 10 + int(((i + 1) / total_chunks) * 70) # Va del 10% al 80%
-            }
+                ESTADOS_TRANSCRIPCION[job_id] = {
+                    "estado": "transcribiendo", 
+                    "actual": i + 1, 
+                    "total": total_chunks,
+                    "porcentaje": 10 + int(((i + 1) / total_chunks) * 70)
+                }
+                
+                with open(chunk_filename, "rb") as audio_file:
+                    # ¡ACÁ ES DONDE DECÍA model_groq O modelo_groq! TIENE QUE DECIR model=
+                    response_groq = client_groq.audio.transcriptions.create(
+                        model=modelo_groq, 
+                        file=audio_file, 
+                        response_format="verbose_json"
+                    )
             
-            with open(chunk_filename, "rb") as audio_file:
-                response_groq = client_groq.audio.transcriptions.create(
-                    model="whisper-large-v3-turbo", 
-                    file=audio_file, 
-                    response_format="verbose_json"
-                )
-            
-            offset_segundos = i * 600.0
-            for segmento in response_groq.segments:
-                inicio_real = segmento['start'] + offset_segundos
-                minutos = int(inicio_real // 60)
-                segundos = int(inicio_real % 60)
-                texto_plano += f"[{minutos:02d}:{segundos:02d}] {segmento['text']}\n"
-                texto_html += f"<span class='minuto' onclick='saltarA({inicio_real})'>[{minutos:02d}:{segundos:02d}]</span> {segmento['text']}<br>"
-            
-            os.remove(chunk_filename)
+                offset_segundos = i * 600.0
+                for segmento in response_groq.segments:
+                    inicio_real = segmento['start'] + offset_segundos
+                    minutos = int(inicio_real // 60)
+                    segundos = int(inicio_real % 60)
+                    texto_plano += f"[{minutos:02d}:{segundos:02d}] {segmento['text']}\n"
+                    texto_html += f"<span class='minuto' onclick='saltarA({inicio_real})'>[{minutos:02d}:{segundos:02d}]</span> {segmento['text']}<br>"
+                
+                os.remove(chunk_filename)
         
         ESTADOS_TRANSCRIPCION[job_id] = {"estado": "guardando", "porcentaje": 90}
         
@@ -123,7 +125,11 @@ def transcribir_en_fondo(job_id: str, email: str, filename: str, content_type: s
         
         titulo_limpio = os.path.splitext(filename)[0]
         supabase.table("transcripciones").insert({
-            "user_email": email, "titulo": titulo_limpio, "texto": texto_plano, "audio_url": url_audio
+            "user_email": email, 
+            "titulo": titulo_limpio, 
+            "texto": texto_plano, 
+            "audio_url": url_audio,
+            "motor_usado": motor  # <-- AGREGÁ ESTO
         }).execute()
         
         response_db = supabase.table("usuarios").select("creditos").eq("email", email).execute()
@@ -351,9 +357,10 @@ async def guardar_edicion(transcripcion_id: int, email: str = Form(...), titulo:
 
 
 # --- DESCARGAR EN WORD ---
+import re 
+
 @app.get("/descargar/{transcripcion_id}")
-async def descargar_word(transcripcion_id: int):
-    # Buscamos la nota
+async def descargar_word(transcripcion_id: int, con_minutos: bool = True):
     response = supabase.table("transcripciones").select("titulo, texto").eq("id", transcripcion_id).execute()
     if not response.data:
         return "No encontrado"
@@ -362,20 +369,20 @@ async def descargar_word(transcripcion_id: int):
     titulo = nota['titulo']
     texto = nota['texto']
     
-    # Creamos el documento de Word en la memoria
+    # Si el usuario eligió "Sin minutos", se los borramos
+    if not con_minutos:
+        texto = re.sub(r'\[\d{2}:\d{2}\]\s*', '', texto)
+    
     doc = Document()
     doc.add_heading(titulo, 0)
     
-    # Separamos por saltos de línea para que quede ordenado
     for linea in texto.split('\n'):
         doc.add_paragraph(linea)
     
-    # Guardamos el Word en la memoria RAM (no en el disco)
     file_stream = BytesIO()
     doc.save(file_stream)
     file_stream.seek(0)
     
-    # Le decimos al navegador que descargue el archivo
     headers = {
         'Content-Disposition': f'attachment; filename="{titulo}.docx"'
     }

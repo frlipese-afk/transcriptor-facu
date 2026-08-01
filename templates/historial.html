@@ -42,12 +42,12 @@
                         {{ nota.texto_html | safe }}
                     </div>
                     
-                    <div class="fecha">Guardado el: {{ nota.fecha }}</div>
+                    <div class="fecha">Guardado el: {{ nota.fecha }} | Motor: {{ nota.motor_usado }}</div>
                     
                     <div style="margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px;">
                         <a href="/editar/{{ nota.id }}?email={{ email }}" style="background: #ffc107; color: #333; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">✏️ Editar</a>
-                        <a href="/descargar/{{ nota.id }}" style="background: #17a2b8; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">📄 Word</a>
-                        
+                        <button type="button" onclick="descargarWord('{{ nota.id }}')" style="background: #17a2b8; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">📄 Word</button>
+            
                         <form id="form-borrar-{{ nota.id }}" action="/borrar/{{ nota.id }}" method="post">
                             <input type="hidden" name="email" value="{{ email }}">
                             <button type="button" data-id="{{ nota.id }}" onclick="confirmarBorrado(this)" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">🗑️ Borrar</button>
@@ -131,6 +131,26 @@
                 audio.currentTime = segundos;
                 audio.play();
             }
+
+                        function descargarWord(id) {
+                Swal.fire({
+                    title: 'Descargar en Word',
+                    text: '¿Querés que el texto incluya los minutitos ([00:00])?',
+                    icon: 'question',
+                    showDenyButton: true,
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, con minutos',
+                    denyButtonText: 'No, solo texto',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.href = `/descargar/${id}?con_minutos=true`;
+                    } else if (result.isDenied) {
+                        window.location.href = `/descargar/${id}?con_minutos=false`;
+                    }
+                })
+            }
+            
         </script>
     </div>
 </body>

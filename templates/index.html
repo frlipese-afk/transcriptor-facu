@@ -39,9 +39,18 @@
                 <div class="creditos-box">
                     Créditos: <span id="creditos">Cargando...</span>
                 </div>
-                <form id="form-subida" action="/transcribir" method="post" enctype="multipart/form-data" onsubmit="subirAudio(event)">
+                <form id="form-subida" action="/iniciar-transcripcion" method="post" enctype="multipart/form-data" onsubmit="subirAudio(event)">
                     <input type="hidden" name="email" id="hidden-email">
+                    
+                    <!-- Menú desplegable para elegir motor -->
+                    <select name="motor" id="motor-select" style="width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box;">
+                        <option value="groq_turbo">🚀 Groq Turbo (Rápido)</option>
+                        <option value="groq_normal">🎯 Groq Normal (Más preciso)</option>
+                    </select>
+
                     <input type="file" name="audio" accept="audio/*" required>
+                    
+                    <!-- EL BOTÓN QUE FALTABA -->
                     <button class="btn btn-primary" type="submit">Subir y Transcribir</button>
                 </form>
                 <a id="historial-link" href="#" class="btn btn-success">📚 Ver mi historial</a>
