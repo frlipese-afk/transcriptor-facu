@@ -305,17 +305,16 @@ async def editar_titulo(transcripcion_id: int, data: dict = Body(...)):
      # Le respondemos a JavaScript que salió todo bien
     return {"titulo": nuevo_titulo}
 
-    # -# --- EDITAR TEXTO ---
+    # --- EDITAR TEXTO ---
 @app.get("/editar/{transcripcion_id}", response_class=HTMLResponse)
 async def editar_nota(request: Request, transcripcion_id: int, email: str):
-    # Buscamos la nota que quiere editar
     response = supabase.table("transcripciones").select("*").eq("id", transcripcion_id).eq("user_email", email).execute()
     if not response.data:
         return "<h3>No se encontró la nota.</h3>"
     
     nota = response.data[0]
     
-    # Procesamos el texto para que los minutitos sean clickeables arriba
+    # Preparamos el texto para la caja editable
     texto_html = ""
     texto_original = nota.get('texto', '') or ''
     for linea in texto_original.split('\n'):
@@ -325,11 +324,12 @@ async def editar_nota(request: Request, transcripcion_id: int, email: str):
             try:
                 mins, segs = map(int, minuto_str.split(':'))
                 segundos_totales = mins * 60 + segs
-                texto_html += f"<span class='minuto' onclick='saltarA({segundos_totales})'>[{minuto_str}]</span> {partes[1]}<br>"
+                # Le ponemos contenteditable="false" al minutito para que no se pueda borrar
+                texto_html += f"<div class='linea'><span class='minuto' contenteditable='false' onclick='saltarA({segundos_totales})'>[{minuto_str}]</span><span class='texto-editable'>{partes[1]}</span></div>"
             except:
-                texto_html += f"{linea}<br>"
+                texto_html += f"<div class='linea'>{linea}</div>"
         else:
-            texto_html += f"{linea}<br>"
+            texto_html += f"<div class='linea'>{linea}</div>"
     
     nota['texto_html'] = texto_html
 
