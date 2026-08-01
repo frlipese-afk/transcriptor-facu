@@ -30,7 +30,9 @@
         {% else %}
             {% for nota in notas %}
                 <div class="card">
-                    <h3>📄 {{ nota.titulo }}</h3>
+                    <h3>📄 <span id="titulo-texto-{{ nota.id }}">{{ nota.titulo }}</span> 
+                    <button type="button" data-id="{{ nota.id }}" onclick="editarTitulo(this)" style="background: none; border: none; color: #6c757d; cursor: pointer; font-size: 16px; padding: 0 5px;">✏️</button>
+                    </h3>
                     {% if nota.audio_url %}
                         <audio id="audio-{{ nota.id }}" controls src="{{ nota.audio_url }}"></audio>
                     {% endif %}
@@ -81,6 +83,44 @@
                 audio.play();
             }
     
+                        function editarTitulo(boton) {
+                const id = boton.getAttribute('data-id');
+                const tituloActual = document.getElementById('titulo-texto-' + id).innerText;
+
+                Swal.fire({
+                    title: 'Editar título',
+                    input: 'text',
+                    inputValue: tituloActual,
+                    inputAttributes: { autocapitalize: 'off' },
+                    showCancelButton: true,
+                    confirmButtonText: 'Guardar',
+                    cancelButtonText: 'Cancelar',
+                    showLoaderOnConfirm: true,
+                    preConfirm: (nuevoTitulo) => {
+                        // Si está vacío, le ponemos "Sin título"
+                        if (!nuevoTitulo.trim()) nuevoTitulo = "Sin título";
+                        
+                        // Mandamos el nuevo título a Python
+                        return fetch(`/editar-titulo/${id}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ titulo: nuevoTitulo, email: '{{ email }}' })
+                        }).then(response => {
+                            if (!response.ok) throw new Error("Error al guardar")
+                            return response.json()
+                        }).catch(error => {
+                            Swal.showValidationMessage(`Error: ${error}`)
+                        })
+                    },
+                    allowOutsideClick: () => !Swal.isLoading()
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        // Si se guardó bien, actualizamos el texto en la pantalla sin recargar
+                        document.getElementById('titulo-texto-' + id).innerText = result.value.titulo;
+                        Swal.fire('¡Listo!', 'El título se actualizó.', 'success');
+                    }
+                })
+            }
 
             function saltarAHistorial(segundos, id) {
                 const audio = document.getElementById('audio-' + id);

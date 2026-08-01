@@ -6,12 +6,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from groq import Groq
 from supabase import create_client, Client
+from fastapi import FastAPI, File, UploadFile, Form, Request, Body
 import boto3
 import os
 import uuid
 import subprocess
 import glob
 import imageio_ffmpeg
+
 
 app = FastAPI()
 # Le decimos a FastAPI dónde están los HTML
@@ -98,9 +100,11 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
         s3_client.put_object(Bucket=BUCKET_NAME, Key=nombre_archivo_nube, Body=audio_bytes, ContentType=content_type)
         url_audio = f"{R2_PUBLIC_URL}/{nombre_archivo_nube}"
         
+        titulo_limpio = os.path.splitext(audio.filename)[0]
+        
         supabase.table("transcripciones").insert({
             "user_email": email,
-            "titulo": audio.filename,
+            "titulo": titulo_limpio,
             "texto": texto_plano,
             "audio_url": url_audio
         }).execute()
@@ -241,3 +245,17 @@ async def borrar_transcripcion(transcripcion_id: int, email: str = Form(...)):
     
     # 4. Volvemos al historial
     return RedirectResponse(url=f"/historial?email={email}", status_code=303)
+
+
+# --- EDITAR TÍTULO ---
+@app.post("/editar-titulo/{transcripcion_id}")
+async def editar_titulo(transcripcion_id: int, data: dict = Body(...)):
+    email = data.get("email")
+    nuevo_titulo = data.get("titulo")
+    nuevo_titulo = os.path.splitext(nuevo_titulo)[0]
+    
+    # Actualizamos en Supabase
+    supabase.table("transcripciones").update({"titulo": nuevo_titulo}).eq("id", transcripcion_id).eq("user_email", email).execute()
+    
+     # Le respondemos a JavaScript que salió todo bien
+    return {"titulo": nuevo_titulo}
