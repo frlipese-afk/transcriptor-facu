@@ -1,8 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, File, UploadFile, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 from groq import Groq
 from supabase import create_client, Client
 import boto3
@@ -13,16 +14,15 @@ import glob
 import imageio_ffmpeg
 
 app = FastAPI()
+# Le decimos a FastAPI dónde están los HTML
+templates = Jinja2Templates(directory="templates")
 
-# --- CONFIGURACIÓN DE SERVICIOS ---
+# --- CONFIGURACIÓN ---
 client_groq = Groq()
-
-# Supabase
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Cloudflare R2
 s3_client = boto3.client('s3',
     endpoint_url=os.environ.get("R2_ENDPOINT_URL"),
     aws_access_key_id=os.environ.get("R2_ACCESS_KEY"),
@@ -35,102 +35,15 @@ R2_PUBLIC_URL = os.environ.get("R2_PUBLIC_URL")
 
 # --- PÁGINA PRINCIPAL ---
 @app.get("/", response_class=HTMLResponse)
-async def leer_inicio():
-    return f"""
-    <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Transcriptor Facu</title>
-            <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-            <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #1a1a1a; }}
-                .container {{ max-width: 500px; margin: 20px auto; }}
-                .card {{ background: white; border-radius: 16px; padding: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); text-align: center; }}
-                h1 {{ font-size: 28px; margin-bottom: 20px; color: #333; }}
-                p {{ color: #666; font-size: 16px; }}
-                .btn {{ display: block; width: 100%; padding: 16px; font-size: 17px; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; margin-top: 15px; text-decoration: none; box-sizing: border-box; }}
-                .btn-google {{ background: #fff; color: #333; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-                .btn-google:hover {{ background: #f8f8f8; }}
-                .btn-primary {{ background: #007bff; color: white; }}
-                .btn-success {{ background: #28a745; color: white; }}
-                .btn-secondary {{ background: #e9ecef; color: #666; }}
-                input[type="file"] {{ width: 100%; padding: 15px; margin: 20px 0; border: 2px dashed #ccc; border-radius: 12px; background: #fafafa; box-sizing: border-box; }}
-                input[type="hidden"] {{ display: none; }}
-                .creditos-box {{ background: #e7f1ff; color: #007bff; padding: 10px; border-radius: 8px; font-weight: bold; margin: 15px 0; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="card">
-                    <h1>🎙️ Transcriptor Facu</h1>
-                    
-                    <div id="login-box">
-                        <p>Ingresá para empezar a transcribir tus clases</p>
-                        <button class="btn btn-google" onclick="loginConGoogle()">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/24px-Google_%22G%22_logo.svg.png" style="vertical-align:middle; margin-right:10px;" alt="Google">Iniciar sesión con Google
-                        </button>
-                    </div>
-
-                    <div id="app-box" style="display: none;">
-                        <p>Hola, <b id="user-email"></b> 👋</p>
-                        <div class="creditos-box">
-                            Créditos: <span id="creditos">Cargando...</span>
-                        </div>
-                        <form action="/transcribir" method="post" enctype="multipart/form-data">
-                            <input type="hidden" name="email" id="hidden-email">
-                            <input type="file" name="audio" accept="audio/*" required>
-                            <button class="btn btn-primary" type="submit">Subir y Transcribir</button>
-                        </form>
-                        <a id="historial-link" href="#" class="btn btn-success">📚 Ver mi historial</a>
-                        <button class="btn btn-secondary" onclick="cerrarSesion()">Cerrar sesión</button>
-                    </div>
-                </div>
-            </div>
-
-            <script>
-                const supabaseClient = supabase.createClient('{SUPABASE_URL}', '{SUPABASE_KEY}');
-                
-                async function checkUser() {{
-                    const {{ data: {{ session }} }} = await supabaseClient.auth.getSession();
-                    if (session) {{ mostrarApp(session.user.email); }}
-                }}
-
-                async function loginConGoogle() {{
-                    await supabaseClient.auth.signInWithOAuth({{
-                        provider: 'google',
-                        options: {{ redirectTo: window.location.origin }}
-                    }});
-                }}
-
-                async function mostrarApp(email) {{
-                    document.getElementById('login-box').style.display = 'none';
-                    document.getElementById('app-box').style.display = 'block';
-                    document.getElementById('user-email').innerText = email;
-                    document.getElementById('hidden-email').value = email;
-                    document.getElementById('historial-link').href = '/historial?email=' + email;
-                    try {{
-                        let res = await fetch(`https://tfjhtxentxhufvdckkin.supabase.co/rest/v1/usuarios?email=eq.${{email}}`, {{
-                            headers: {{ "apikey": "{SUPABASE_KEY}" }}
-                        }});
-                        let data = await res.json();
-                        if(data.length > 0) {{ document.getElementById('creditos').innerText = data[0].creditos + " disponibles"; }} 
-                        else {{ document.getElementById('creditos').innerText = "Sin créditos. Pedile al admin."; }}
-                    }} catch(e) {{ document.getElementById('creditos').innerText = "Error al cargar"; }}
-                }}
-
-                async function cerrarSesion() {{
-                    await supabaseClient.auth.signOut();
-                    location.reload();
-                }}
-
-                checkUser();
-            </script>
-        </body>
-    </html>
-    """
+async def leer_inicio(request: Request):
+    # Solo le pasamos las llaves de Supabase al HTML para que el login funcione
+    return templates.TemplateResponse(request, "index.html", {
+        "supabase_url": SUPABASE_URL,
+        "supabase_key": SUPABASE_KEY
+    })
 
 
-# --- FUNCIÓN DE TRANSCRIPCIÓN PARA AUDIOS LARGOS ---
+# --- TRANSCRIPCIÓN ---
 @app.post("/transcribir", response_class=HTMLResponse)
 async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...)):
     response_db = supabase.table("usuarios").select("creditos").eq("email", email).execute()
@@ -147,7 +60,6 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
         temp_original = f"temp_original.{extension}"
         with open(temp_original, "wb") as f: f.write(audio_bytes)
         
-        # Cortar en 10 minutos (600 segundos)
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         subprocess.run([
             ffmpeg_exe, "-i", temp_original, 
@@ -157,7 +69,6 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
         ], check=True, capture_output=True)
         
         chunks = sorted(glob.glob("temp_chunk_*.wav"))
-        
         texto_plano = ""
         texto_html = ""
         
@@ -182,9 +93,8 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
         
         if os.path.exists(temp_original): os.remove(temp_original)
 
-        nombre_archivo_nube = f"{uuid.uuid4()}_{audio.filename}"
-        # Aseguramos que el navegador sepa que es un audio
         content_type = audio.content_type if audio.content_type and audio.content_type.startswith('audio') else 'audio/mpeg'
+        nombre_archivo_nube = f"{uuid.uuid4()}_{audio.filename}"
         s3_client.put_object(Bucket=BUCKET_NAME, Key=nombre_archivo_nube, Body=audio_bytes, ContentType=content_type)
         url_audio = f"{R2_PUBLIC_URL}/{nombre_archivo_nube}"
         
@@ -200,6 +110,7 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
     nuevos_creditos = creditos - 1
     supabase.table("usuarios").update({"creditos": nuevos_creditos}).eq("email", email).execute()
 
+    # Mostramos el resultado (Después pasaremos esto a plantilla también, pero por ahora queda así)
     return f"""
     <html>
         <head>
@@ -243,116 +154,56 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
     """
 
 
-# --- HISTORIAL DE TRANSCRIPCIONES ---
+# --- HISTORIAL ---
 @app.get("/historial", response_class=HTMLResponse)
-async def ver_historial(email: str):
+async def ver_historial(request: Request, email: str):
     response = supabase.table("transcripciones").select("id, titulo, texto, fecha, audio_url").eq("user_email", email).order("fecha", desc=True).execute()
     notas = response.data
     
-    lista_html = ""
+    notas_procesadas = []
     for nota in notas:
-        audio_url = nota.get('audio_url', '')
-        reproductor = f"<audio id='audio-{nota['id']}' controls src='{audio_url}' style='width:100%; margin-bottom:15px;'></audio>" if audio_url else ""
+        texto_html = ""
+        # Usamos .get() por si la nota no tiene texto (evita el error)
+        texto_original = nota.get('texto', '') or ''
         
-        texto_html_historial = ""
-        for linea in nota['texto'].split('\n'):
-            if linea.startswith('['):
+        for linea in texto_original.split('\n'):
+            # Si la línea tiene corchete, intentamos sacarle el minuto
+            if linea.startswith('[') and ']' in linea:
                 partes = linea.split(']', 1)
-                minuto_str = partes[0].replace('[', '')
-                mins, segs = map(int, minuto_str.split(':'))
-                segundos_totales = mins * 60 + segs
-                texto_html_historial += f"<span class='minuto' onclick='saltarAHistorial({segundos_totales}, {nota['id']})'>[{minuto_str}]</span>{partes[1]}<br>"
+                minuto_str = partes[0].replace('[', '').strip()
+                try:
+                    # Intentamos convertir el minuto a números
+                    mins, segs = map(int, minuto_str.split(':'))
+                    segundos_totales = mins * 60 + segs
+                    texto_html += f"<span class='minuto' onclick='saltarAHistorial({segundos_totales}, {nota['id']})'>[{minuto_str}]</span>{partes[1]}<br>"
+                except:
+                    # Si falla (ej: no son números), mostramos la línea normal
+                    texto_html += f"{linea}<br>"
             else:
-                texto_html_historial += f"{linea}<br>"
-
-        lista_html += f"""
-        <div class='card'>
-            <h3>📄 {nota['titulo']}</h3>
-            {reproductor}
-            <div class='texto-box'>{texto_html_historial}</div>
-            <div class='fecha'>Guardado el: {nota['fecha']}</div>
-        </div>
-        """
+                # Si no tiene corchete, la mostramos normal
+                texto_html += f"{linea}<br>"
         
-    if not notas: 
-        lista_html = "<p style='text-align:center; color:#666;'>Aún no tenés transcripciones guardadas.</p>"
+        nota['texto_html'] = texto_html
+        notas_procesadas.append(nota)
 
-    return f"""
-    <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Mis Transcripciones</title>
-            <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #1a1a1a; }}
-                .container {{ max-width: 600px; margin: 20px auto; }}
-                h1 {{ text-align: center; color: #333; }}
-                .btn {{ display: block; width: 100%; padding: 16px; font-size: 17px; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; margin-bottom: 20px; text-decoration: none; box-sizing: border-box; text-align: center; }}
-                .btn-primary {{ background: #007bff; color: white; }}
-                .card {{ background: white; border-radius: 16px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }}
-                h3 {{ margin-top: 0; color: #333; font-size: 20px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }}
-                audio {{ width: 100%; margin-bottom: 15px; }}
-                .texto-box {{ max-height: 300px; overflow-y: auto; background: #fafafa; border: 1px solid #eee; padding: 15px; border-radius: 8px; font-size: 15px; line-height: 1.6; color: #555; }}
-                .fecha {{ font-size: 12px; color: #999; margin-top: 10px; text-align: right; }}
-                .minuto {{ color: #007bff; cursor: pointer; font-weight: bold; background: #e7f1ff; padding: 3px 8px; border-radius: 6px; margin-right: 5px; display: inline-block; margin-bottom: 5px; font-size: 14px; }}
-                .minuto:hover {{ background: #007bff; color: white; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <a href="/" class="btn btn-primary">⬅️ Volver a transcribir</a>
-                <h1>📚 Mi Historial</h1>
-                {lista_html}
-                <script>
-                    function saltarAHistorial(segundos, id) {{
-                        const audio = document.getElementById('audio-' + id);
-                        audio.currentTime = segundos;
-                        audio.play();
-                    }}
-                </script>
-            </div>
-        </body>
-    </html>
-    """
+    return templates.TemplateResponse(request, "historial.html", {
+        "notas": notas_procesadas,
+        "email": email
+    })
 
 
-# --- PANEL DE ADMINISTRACIÓN ---
+# --- PANEL DE ADMIN ---
 @app.get("/admin-secreto", response_class=HTMLResponse)
 async def panel_admin():
     response = supabase.table("usuarios").select("*").execute()
     usuarios = response.data
-    
     tabla_html = ""
     for u in usuarios:
         tabla_html += f"<tr><td>{u['email']}</td><td>{u['creditos']}</td><td><form action='/agregar-creditos' method='post'><input type='hidden' name='email' value='{u['email']}'><input type='number' name='cantidad' value='5' style='width:60px; padding:5px;'><button type='submit' style='padding:5px 10px; background:green; color:white; border:none; border-radius:3px; cursor:pointer;'>Sumar</button></form></td></tr>"
 
     return f"""
-    <html>
-        <head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin</title>
-        <style>
-            body {{ font-family: Arial; padding: 20px; background: #e9ecef; }}
-            .contenedor {{ max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; }}
-            table {{ border-collapse: collapse; width: 100%; margin-top: 20px; }}
-            th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
-            th {{ background-color: #f2f2f2; }}
-        </style>
-        </head>
-        <body>
-            <div class="contenedor">
-                <h1>Panel de Administración 🛠️</h1>
-                <table>
-                    <tr><th>Email</th><th>Créditos Actuales</th><th>Sumar Créditos</th></tr>
-                    {tabla_html}
-                </table>
-                <br>
-                <h3>Registrar nuevo usuario:</h3>
-                <form action='/agregar-creditos' method='post'>
-                    Email: <input type='email' name='email' required style='padding:8px;'>
-                    Créditos: <input type='number' name='cantidad' value='5' style='width:60px; padding:8px;'>
-                    <button type='submit' style='padding:8px 15px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;'>Crear y Sumar</button>
-                </form>
-            </div>
-        </body>
-    </html>
+    <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin</title><style>body {{ font-family: Arial; padding: 20px; background: #e9ecef; }} .contenedor {{ max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; }} table {{ border-collapse: collapse; width: 100%; margin-top: 20px; }} th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }} th {{ background-color: #f2f2f2; }}</style></head>
+    <body><div class="contenedor"><h1>Panel de Administración 🛠️</h1><table><tr><th>Email</th><th>Créditos Actuales</th><th>Sumar Créditos</th></tr>{tabla_html}</table><br><h3>Registrar nuevo usuario:</h3><form action='/agregar-creditos' method='post'>Email: <input type='email' name='email' required style='padding:8px;'>Créditos: <input type='number' name='cantidad' value='5' style='width:60px; padding:8px;'><button type='submit' style='padding:8px 15px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;'>Crear y Sumar</button></form></div></body></html>
     """
 
 @app.post("/agregar-creditos")
@@ -366,3 +217,27 @@ async def agregar_creditos(email: str = Form(...), cantidad: int = Form(...)):
         supabase.table("usuarios").insert({"email": email, "creditos": cantidad}).execute()
     
     return "<h3>¡Créditos actualizados! Volvé al panel.</h3><a href='/admin-secreto'>Volver al panel</a>"
+
+    # --- BORRAR TRANSCRIPCIÓN ---
+@app.post("/borrar/{transcripcion_id}")
+async def borrar_transcripcion(transcripcion_id: int, email: str = Form(...)):
+    # 1. Buscamos la nota en Supabase para conseguir el link del audio
+    response = supabase.table("transcripciones").select("audio_url").eq("id", transcripcion_id).execute()
+    
+    if response.data:
+        audio_url = response.data[0].get('audio_url', '')
+        
+        # 2. Si tiene audio, lo borramos de Cloudflare R2
+        if audio_url:
+            # Agarramos el nombre del archivo (lo que está después de la última barra /)
+            nombre_archivo = audio_url.split('/')[-1]
+            try:
+                s3_client.delete_object(Bucket=BUCKET_NAME, Key=nombre_archivo)
+            except Exception as e:
+                print(f"Error al borrar audio de R2: {e}")
+        
+        # 3. Borramos el texto de la base de datos (Supabase)
+        supabase.table("transcripciones").delete().eq("id", transcripcion_id).execute()
+    
+    # 4. Volvemos al historial
+    return RedirectResponse(url=f"/historial?email={email}", status_code=303)

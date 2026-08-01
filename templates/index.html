@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcriptor Facu</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #1a1a1a; }
+        .container { max-width: 500px; margin: 20px auto; }
+        .card { background: white; border-radius: 16px; padding: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); text-align: center; }
+        h1 { font-size: 28px; margin-bottom: 20px; color: #333; }
+        p { color: #666; font-size: 16px; }
+        .btn { display: block; width: 100%; padding: 16px; font-size: 17px; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; margin-top: 15px; text-decoration: none; box-sizing: border-box; }
+        .btn-google { background: #fff; color: #333; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .btn-google:hover { background: #f8f8f8; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-secondary { background: #e9ecef; color: #666; }
+        input[type="file"] { width: 100%; padding: 15px; margin: 20px 0; border: 2px dashed #ccc; border-radius: 12px; background: #fafafa; box-sizing: border-box; }
+        input[type="hidden"] { display: none; }
+        .creditos-box { background: #e7f1ff; color: #007bff; padding: 10px; border-radius: 8px; font-weight: bold; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🎙️ Transcriptor Facu</h1>
+            
+            <div id="login-box">
+                <p>Ingresá para empezar a transcribir tus clases</p>
+                <button class="btn btn-google" onclick="loginConGoogle()">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/24px-Google_%22G%22_logo.svg.png" style="vertical-align:middle; margin-right:10px;" alt="Google">Iniciar sesión con Google
+                </button>
+            </div>
+
+            <div id="app-box" style="display: none;">
+                <p>Hola, <b id="user-email"></b> 👋</p>
+                <div class="creditos-box">
+                    Créditos: <span id="creditos">Cargando...</span>
+                </div>
+                <form action="/transcribir" method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="email" id="hidden-email">
+                    <input type="file" name="audio" accept="audio/*" required>
+                    <button class="btn btn-primary" type="submit">Subir y Transcribir</button>
+                </form>
+                <a id="historial-link" href="#" class="btn btn-success">📚 Ver mi historial</a>
+                <button class="btn btn-secondary" onclick="cerrarSesion()">Cerrar sesión</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const supabaseUrl = '{{ supabase_url }}';
+        const supabaseKey = '{{ supabase_key }}';
+        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+        
+        async function checkUser() {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session) { mostrarApp(session.user.email); }
+        }
+
+        async function loginConGoogle() {
+            await supabaseClient.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo: window.location.origin }
+            });
+        }
+
+        async function mostrarApp(email) {
+            document.getElementById('login-box').style.display = 'none';
+            document.getElementById('app-box').style.display = 'block';
+            document.getElementById('user-email').innerText = email;
+            document.getElementById('hidden-email').value = email;
+            document.getElementById('historial-link').href = '/historial?email=' + email;
+            try {
+                let res = await fetch(`https://tfjhtxentxhufvdckkin.supabase.co/rest/v1/usuarios?email=eq.${email}`, {
+                    headers: { "apikey": supabaseKey }
+                });
+                let data = await res.json();
+                if(data.length > 0) { document.getElementById('creditos').innerText = data[0].creditos + " disponibles"; } 
+                else { document.getElementById('creditos').innerText = "Sin créditos. Pedile al admin."; }
+            } catch(e) { document.getElementById('creditos').innerText = "Error al cargar"; }
+        }
+
+        async function cerrarSesion() {
+            await supabaseClient.auth.signOut();
+            location.reload();
+        }
+
+        checkUser();
+    </script>
+</body>
+</html>
