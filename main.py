@@ -1,12 +1,14 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, File, UploadFile, Form, Request
+from fastapi import FastAPI, File, UploadFile, Form, Request, Body, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from groq import Groq
 from supabase import create_client, Client
-from fastapi import FastAPI, File, UploadFile, Form, Request, Body
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from docx import Document
+from io import BytesIO
 import boto3
 import os
 import uuid
@@ -45,36 +47,56 @@ async def leer_inicio(request: Request):
     })
 
 
-# --- TRANSCRIPCIÓN ---
-@app.post("/transcribir", response_class=HTMLResponse)
-async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...)):
-    response_db = supabase.table("usuarios").select("creditos").eq("email", email).execute()
-    if not response_db.data:
-        return "<h3>No estás registrado.</h3><a href='/'>Volver</a>"
-    
-    creditos = response_db.data[0]['creditos']
-    if creditos <= 0:
-        return f"<h3>No tenés créditos, {email}.</h3><a href='/'>Volver</a>"
+# Diccionario para guardar el estado de cada transcripción (en memoria)
+ESTADOS_TRANSCRIPCION = {}
 
+# --- 1. RUTA QUE RECIBE EL AUDIO Y EMPIEZA A TRABAJAR POR DETRÁS ---
+@app.post("/iniciar-transcripcion")
+async def iniciar_transcripcion(background_tasks: BackgroundTasks, email: str = Form(...), audio: UploadFile = File(...)):
+    job_id = str(uuid.uuid4())
     audio_bytes = await audio.read()
+    
+    # Guardamos el estado inicial
+    ESTADOS_TRANSCRIPCION[job_id] = {"estado": "cortando", "porcentaje": 5}
+    
+    # Le decimos a Python: "Empezá a transcribir, pero no me tengas esperando"
+    background_tasks.add_task(transcribir_en_fondo, job_id, email, audio.filename, audio.content_type, audio_bytes)
+    
+    # Le respondemos a la página el ID para que empiece a preguntar cómo va
+    return {"job_id": job_id}
+
+# --- 2. LA FUNCIÓN QUE HACE EL TRABAJO DURO (POR DETRÁS) ---
+def transcribir_en_fondo(job_id: str, email: str, filename: str, content_type: str, audio_bytes: bytes):
     try:
-        extension = audio.filename.split('.')[-1].lower()
-        temp_original = f"temp_original.{extension}"
+        extension = filename.split('.')[-1].lower()
+        temp_original = f"temp_{job_id}.{extension}"
         with open(temp_original, "wb") as f: f.write(audio_bytes)
+        
+        ESTADOS_TRANSCRIPCION[job_id] = {"estado": "cortando", "porcentaje": 10}
         
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         subprocess.run([
             ffmpeg_exe, "-i", temp_original, 
             "-f", "segment", "-segment_time", "600", 
             "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", 
-            "temp_chunk_%03d.wav"
+            f"temp_chunk_{job_id}_%03d.wav"
         ], check=True, capture_output=True)
         
-        chunks = sorted(glob.glob("temp_chunk_*.wav"))
+        if os.path.exists(temp_original): os.remove(temp_original)
+        
+        chunks = sorted(glob.glob(f"temp_chunk_{job_id}_*.wav"))
+        total_chunks = len(chunks)
         texto_plano = ""
         texto_html = ""
         
         for i, chunk_filename in enumerate(chunks):
+            ESTADOS_TRANSCRIPCION[job_id] = {
+                "estado": "transcribiendo", 
+                "actual": i + 1, 
+                "total": total_chunks,
+                "porcentaje": 10 + int(((i + 1) / total_chunks) * 70) # Va del 10% al 80%
+            }
+            
             with open(chunk_filename, "rb") as audio_file:
                 response_groq = client_groq.audio.transcriptions.create(
                     model="whisper-large-v3-turbo", 
@@ -87,34 +109,57 @@ async def transcribir_audio(email: str = Form(...), audio: UploadFile = File(...
                 inicio_real = segmento['start'] + offset_segundos
                 minutos = int(inicio_real // 60)
                 segundos = int(inicio_real % 60)
-                
                 texto_plano += f"[{minutos:02d}:{segundos:02d}] {segmento['text']}\n"
                 texto_html += f"<span class='minuto' onclick='saltarA({inicio_real})'>[{minutos:02d}:{segundos:02d}]</span> {segmento['text']}<br>"
             
             os.remove(chunk_filename)
         
-        if os.path.exists(temp_original): os.remove(temp_original)
-
-        content_type = audio.content_type if audio.content_type and audio.content_type.startswith('audio') else 'audio/mpeg'
-        nombre_archivo_nube = f"{uuid.uuid4()}_{audio.filename}"
-        s3_client.put_object(Bucket=BUCKET_NAME, Key=nombre_archivo_nube, Body=audio_bytes, ContentType=content_type)
+        ESTADOS_TRANSCRIPCION[job_id] = {"estado": "guardando", "porcentaje": 90}
+        
+        ct = content_type if content_type and content_type.startswith('audio') else 'audio/mpeg'
+        nombre_archivo_nube = f"{uuid.uuid4()}_{filename}"
+        s3_client.put_object(Bucket=BUCKET_NAME, Key=nombre_archivo_nube, Body=audio_bytes, ContentType=ct)
         url_audio = f"{R2_PUBLIC_URL}/{nombre_archivo_nube}"
         
-        titulo_limpio = os.path.splitext(audio.filename)[0]
-        
+        titulo_limpio = os.path.splitext(filename)[0]
         supabase.table("transcripciones").insert({
-            "user_email": email,
-            "titulo": titulo_limpio,
-            "texto": texto_plano,
-            "audio_url": url_audio
+            "user_email": email, "titulo": titulo_limpio, "texto": texto_plano, "audio_url": url_audio
         }).execute()
+        
+        response_db = supabase.table("usuarios").select("creditos").eq("email", email).execute()
+        nuevos_creditos = response_db.data[0]['creditos'] - 1
+        supabase.table("usuarios").update({"creditos": nuevos_creditos}).eq("email", email).execute()
+        
+        # Guardamos el resultado final para que la página lo pueda pedir
+        ESTADOS_TRANSCRIPCION[job_id] = {
+            "estado": "terminado", 
+            "porcentaje": 100,
+            "resultado": {
+                "url_audio": url_audio, "texto_html": texto_html, 
+                "nuevos_creditos": nuevos_creditos, "email": email
+            }
+        }
     except Exception as e:
-        return f"Error procesando el audio: {e}"
+        ESTADOS_TRANSCRIPCION[job_id] = {"estado": "error", "mensaje": str(e)}
 
-    nuevos_creditos = creditos - 1
-    supabase.table("usuarios").update({"creditos": nuevos_creditos}).eq("email", email).execute()
+# --- 3. RUTA QUE LE DICE A LA PÁGINA CÓMO VA ---
+@app.get("/estado-transcripcion/{job_id}")
+async def estado_transcripcion(job_id: str):
+    return ESTADOS_TRANSCRIPCION.get(job_id, {"estado": "no_encontrado"})
 
-    # Mostramos el resultado (Después pasaremos esto a plantilla también, pero por ahora queda así)
+# --- 4. RUTA QUE MUESTRA EL RESULTADO FINAL ---
+@app.get("/resultado/{job_id}", response_class=HTMLResponse)
+async def resultado_transcripcion(job_id: str):
+    estado = ESTADOS_TRANSCRIPCION.get(job_id)
+    if not estado or estado.get("estado") != "terminado":
+        return "<h3>Procesando o error...</h3>"
+    
+    data = estado["resultado"]
+    url_audio = data["url_audio"]
+    texto_html = data["texto_html"]
+    nuevos_creditos = data["nuevos_creditos"]
+    email = data["email"]
+
     return f"""
     <html>
         <head>
@@ -259,3 +304,79 @@ async def editar_titulo(transcripcion_id: int, data: dict = Body(...)):
     
      # Le respondemos a JavaScript que salió todo bien
     return {"titulo": nuevo_titulo}
+
+    # -# --- EDITAR TEXTO ---
+@app.get("/editar/{transcripcion_id}", response_class=HTMLResponse)
+async def editar_nota(request: Request, transcripcion_id: int, email: str):
+    # Buscamos la nota que quiere editar
+    response = supabase.table("transcripciones").select("*").eq("id", transcripcion_id).eq("user_email", email).execute()
+    if not response.data:
+        return "<h3>No se encontró la nota.</h3>"
+    
+    nota = response.data[0]
+    
+    # Procesamos el texto para que los minutitos sean clickeables arriba
+    texto_html = ""
+    texto_original = nota.get('texto', '') or ''
+    for linea in texto_original.split('\n'):
+        if linea.startswith('[') and ']' in linea:
+            partes = linea.split(']', 1)
+            minuto_str = partes[0].replace('[', '').strip()
+            try:
+                mins, segs = map(int, minuto_str.split(':'))
+                segundos_totales = mins * 60 + segs
+                texto_html += f"<span class='minuto' onclick='saltarA({segundos_totales})'>[{minuto_str}]</span> {partes[1]}<br>"
+            except:
+                texto_html += f"{linea}<br>"
+        else:
+            texto_html += f"{linea}<br>"
+    
+    nota['texto_html'] = texto_html
+
+    return templates.TemplateResponse(request, "editar.html", {
+        "nota": nota,
+        "email": email
+    })
+
+@app.post("/guardar-edicion/{transcripcion_id}")
+async def guardar_edicion(transcripcion_id: int, email: str = Form(...), titulo: str = Form(...), texto: str = Form(...)):
+    # Actualizamos el texto y el título en Supabase
+    titulo_limpio = os.path.splitext(titulo)[0] # Le sacamos la extensión por las dudas
+    supabase.table("transcripciones").update({
+        "titulo": titulo_limpio,
+        "texto": texto
+    }).eq("id", transcripcion_id).eq("user_email", email).execute()
+    
+    return RedirectResponse(url=f"/historial?email={email}", status_code=303)
+
+
+# --- DESCARGAR EN WORD ---
+@app.get("/descargar/{transcripcion_id}")
+async def descargar_word(transcripcion_id: int):
+    # Buscamos la nota
+    response = supabase.table("transcripciones").select("titulo, texto").eq("id", transcripcion_id).execute()
+    if not response.data:
+        return "No encontrado"
+    
+    nota = response.data[0]
+    titulo = nota['titulo']
+    texto = nota['texto']
+    
+    # Creamos el documento de Word en la memoria
+    doc = Document()
+    doc.add_heading(titulo, 0)
+    
+    # Separamos por saltos de línea para que quede ordenado
+    for linea in texto.split('\n'):
+        doc.add_paragraph(linea)
+    
+    # Guardamos el Word en la memoria RAM (no en el disco)
+    file_stream = BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+    
+    # Le decimos al navegador que descargue el archivo
+    headers = {
+        'Content-Disposition': f'attachment; filename="{titulo}.docx"'
+    }
+    return StreamingResponse(file_stream, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', headers=headers)

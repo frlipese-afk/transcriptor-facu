@@ -39,13 +39,24 @@
                 <div class="creditos-box">
                     Créditos: <span id="creditos">Cargando...</span>
                 </div>
-                <form action="/transcribir" method="post" enctype="multipart/form-data">
+                <form id="form-subida" action="/transcribir" method="post" enctype="multipart/form-data" onsubmit="subirAudio(event)">
                     <input type="hidden" name="email" id="hidden-email">
                     <input type="file" name="audio" accept="audio/*" required>
                     <button class="btn btn-primary" type="submit">Subir y Transcribir</button>
                 </form>
                 <a id="historial-link" href="#" class="btn btn-success">📚 Ver mi historial</a>
                 <button class="btn btn-secondary" onclick="cerrarSesion()">Cerrar sesión</button>
+            </div>
+
+            <!-- Pantalla de carga real (Invisible al principio) -->
+            <div id="procesando-box" style="display: none; margin-top: 20px; padding: 25px; background: #e7f1ff; border-radius: 12px; text-align: center;">
+                <h3 id="estado-texto" style="margin: 0; color: #007bff;">⬆️ Subiendo audio...</h3>
+                <p style="font-size: 14px; color: #555; margin-top: 10px;">Dependiendo de tu internet, puede tardar unos minutos.</p>
+                
+                <!-- La barrita de progreso REAL -->
+                <div style="width: 100%; background: #d0e3ff; border-radius: 10px; height: 15px; margin-top: 15px; overflow: hidden;">
+                    <div id="barra-carga" style="width: 0%; background: #007bff; height: 100%; border-radius: 10px; transition: width 0.3s;"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -86,6 +97,65 @@
         async function cerrarSesion() {
             await supabaseClient.auth.signOut();
             location.reload();
+        }
+
+             let intervaloEstado = null;
+
+        async function subirAudio(event) {
+            event.preventDefault();
+            const form = document.getElementById('form-subida');
+            const formData = new FormData(form);
+            
+            // Mostramos la barrita y ocultamos el formulario
+            document.getElementById('app-box').style.display = 'none';
+            document.getElementById('procesando-box').style.display = 'block';
+            document.getElementById('estado-texto').innerText = '⬆️ Subiendo audio...';
+            document.getElementById('barra-carga').style.background = '#007bff';
+            document.getElementById('barra-carga').style.width = '0%';
+
+            try {
+                // 1. Subimos el archivo y obtenemos el ID del trabajo
+                const response = await fetch('/iniciar-transcripcion', { method: 'POST', body: formData });
+                const data = await response.json();
+                const jobId = data.job_id;
+
+                // 2. Empezamos a preguntar el estado cada 1 segundo
+                intervaloEstado = setInterval(() => chequearEstado(jobId), 1000);
+
+            } catch (e) {
+                alert("Error al subir el audio.");
+                location.reload();
+            }
+        }
+
+        async function chequearEstado(jobId) {
+            try {
+                const res = await fetch(`/estado-transcripcion/${jobId}`);
+                const estado = await res.json();
+
+                if (estado.porcentaje) {
+                    document.getElementById('barra-carga').style.width = estado.porcentaje + '%';
+                }
+
+                if (estado.estado === 'cortando') {
+                    document.getElementById('estado-texto').innerText = '✂️ Cortando el audio en pedacitos...';
+                } else if (estado.estado === 'transcribiendo') {
+                    document.getElementById('estado-texto').innerText = `🎧 Transcribiendo parte ${estado.actual} de ${estado.total}...`;
+                } else if (estado.estado === 'guardando') {
+                    document.getElementById('estado-texto').innerText = '☁️ Guardando en la nube...';
+                } else if (estado.estado === 'terminado') {
+                    clearInterval(intervaloEstado); // Dejamos de preguntar
+                    document.getElementById('estado-texto').innerText = '✅ ¡Listo! Redirigiendo...';
+                    document.getElementById('barra-carga').style.background = '#28a745';
+                    // Vamos a la página del resultado
+                    setTimeout(() => { window.location.href = `/resultado/${jobId}`; }, 1000);
+                } else if (estado.estado === 'error') {
+                    clearInterval(intervaloEstado);
+                    document.getElementById('estado-texto').innerText = '❌ Error: ' + estado.mensaje;
+                }
+            } catch (e) {
+                console.error("Error al chequear estado", e);
+            }
         }
 
         checkUser();

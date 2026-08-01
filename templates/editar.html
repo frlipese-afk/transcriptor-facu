@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar Transcripción</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #1a1a1a; }
+        .container { max-width: 1000px; margin: 20px auto; }
+        .card { background: white; border-radius: 16px; padding: 24px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+        h1 { font-size: 24px; color: #333; margin-top: 0; text-align: center; }
+        
+        /* Magia para tener 2 columnas */
+        .editor-grid { display: flex; gap: 25px; }
+        .column { flex: 1; min-width: 0; }
+        
+        h3 { margin-top: 0; color: #333; font-size: 18px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
+        .titulo-input { width: 100%; font-size: 18px; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-weight: bold; }
+        audio { width: 100%; margin-bottom: 15px; border-radius: 12px; }
+        
+        .texto-box-lectura { height: 450px; overflow-y: auto; background: #fafafa; border: 1px solid #eee; padding: 15px; border-radius: 8px; font-size: 15px; line-height: 1.6; color: #555; }
+        textarea { width: 100%; height: 450px; padding: 15px; font-size: 15px; line-height: 1.6; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-family: inherit; resize: none; }
+        
+        .btn { display: inline-block; padding: 12px 24px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; text-decoration: none; margin-top: 20px; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-secondary { background: #e9ecef; color: #666; margin-left: 10px; }
+        .minuto { color: #007bff; cursor: pointer; font-weight: bold; background: #e7f1ff; padding: 3px 8px; border-radius: 6px; margin-right: 5px; display: inline-block; margin-bottom: 5px; font-size: 14px; }
+        .minuto:hover { background: #007bff; color: white; }
+
+        /* Si entra desde el celu, que se ponga uno abajo del otro */
+        @media (max-width: 768px) {
+            .editor-grid { flex-direction: column; }
+            .texto-box-lectura, textarea { height: 300px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>✏️ Editor de Transcripción</h1>
+            
+            <div class="editor-grid">
+                <!-- Columna Izquierda: Audio y Minutos -->
+                <div class="column">
+                    <h3>🎧 Escuchar y Saltar</h3>
+                    <audio id="reproductor" controls src="{{ nota.audio_url }}"></audio>
+                    <div class="texto-box-lectura">
+                        {{ nota.texto_html | safe }}
+                    </div>
+                </div>
+
+                <!-- Columna Derecha: Edición -->
+                <div class="column">
+                    <h3>📝 Corregir Texto</h3>
+                    <form action="/guardar-edicion/{{ nota.id }}?email={{ email }}" method="post">
+                        <input type="hidden" name="email" value="{{ email }}">
+                        <input type="text" name="titulo" value="{{ nota.titulo }}" class="titulo-input" required>
+                        <textarea name="texto">{{ nota.texto }}</textarea>
+                        <div style="text-align: right;">
+                            <button type="submit" class="btn btn-success">💾 Guardar Cambios</button>
+                            <a href="/historial?email={{ email }}" class="btn btn-secondary">Cancelar</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function saltarA(segundos) {
+            const audio = document.getElementById('reproductor');
+            audio.currentTime = segundos;
+            audio.play();
+        }
+    </script>
+</body>
+</html>

@@ -31,7 +31,7 @@
             {% for nota in notas %}
                 <div class="card">
                     <h3>📄 <span id="titulo-texto-{{ nota.id }}">{{ nota.titulo }}</span> 
-                    <button type="button" data-id="{{ nota.id }}" onclick="editarTitulo(this)" style="background: none; border: none; color: #6c757d; cursor: pointer; font-size: 16px; padding: 0 5px;">✏️</button>
+                    <button type="button" data-id="{{ nota.id }}" onclick="editarTitulo(this)" style="background: none; border: none; color: #6c757d; cursor: pointer; font-size: 16px; padding: 0 5px;">✏️Editar</button>
                     </h3>
                     {% if nota.audio_url %}
                         <audio id="audio-{{ nota.id }}" controls src="{{ nota.audio_url }}"></audio>
@@ -44,11 +44,15 @@
                     
                     <div class="fecha">Guardado el: {{ nota.fecha }}</div>
                     
-                     <!-- Formulario para borrar -->
-                    <form id="form-borrar-{{ nota.id }}" action="/borrar/{{ nota.id }}" method="post" style="margin-top: 15px; text-align: right;">
-                        <input type="hidden" name="email" value="{{ email }}">
-                        <button type="button" data-id="{{ nota.id }}" onclick="confirmarBorrado(this)" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600;">🗑️ Borrar</button>
-                    </form>
+                    <div style="margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px;">
+                        <a href="/editar/{{ nota.id }}?email={{ email }}" style="background: #ffc107; color: #333; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">✏️ Editar</a>
+                        <a href="/descargar/{{ nota.id }}" style="background: #17a2b8; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">📄 Word</a>
+                        
+                        <form id="form-borrar-{{ nota.id }}" action="/borrar/{{ nota.id }}" method="post">
+                            <input type="hidden" name="email" value="{{ email }}">
+                            <button type="button" data-id="{{ nota.id }}" onclick="confirmarBorrado(this)" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">🗑️ Borrar</button>
+                        </form>
+                    </div>
                 </div>
                     
                 </div>
