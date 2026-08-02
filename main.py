@@ -320,6 +320,29 @@ async def editar_nota(request: Request, transcripcion_id: int, email: str):
     
     nota = response.data[0]
     
+    texto_html = ""
+    texto_original = nota.get('texto', '') or ''
+    for linea in texto_original.split('\n'):
+        if linea.startswith('[') and ']' in linea:
+            partes = linea.split(']', 1)
+            minuto_str = partes[0].replace('[', '').strip()
+            try:
+                mins, segs = map(int, minuto_str.split(':'))
+                segundos_totales = mins * 60 + segs
+                # Usamos las clases nuevas del diseño: transcript-line, timestamp y editable-text
+                texto_html += f"<div class='transcript-line'><span class='timestamp' contenteditable='false' onclick='saltarA({segundos_totales})'>[{minuto_str}]</span><span class='editable-text'>{partes[1]}</span></div>"
+            except:
+                texto_html += f"<div class='transcript-line'><span class='editable-text'>{linea}</span></div>"
+        else:
+            texto_html += f"<div class='transcript-line'><span class='editable-text'>{linea}</span></div>"
+    
+    nota['texto_html'] = texto_html
+
+    return templates.TemplateResponse(request, "editar.html", {
+        "nota": nota,
+        "email": email
+    })
+    
     # Preparamos el texto para la caja editable
     texto_html = ""
     texto_original = nota.get('texto', '') or ''

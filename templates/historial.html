@@ -1,157 +1,163 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mis Transcripciones</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #1a1a1a; }
-        .container { max-width: 600px; margin: 20px auto; }
-        h1 { text-align: center; color: #333; }
-        .btn { display: block; width: 100%; padding: 16px; font-size: 17px; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; margin-bottom: 20px; text-decoration: none; box-sizing: border-box; text-align: center; }
-        .btn-primary { background: #007bff; color: white; }
-        .card { background: white; border-radius: 16px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); position: relative; }
-        h3 { margin-top: 0; color: #333; font-size: 20px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
-        audio { width: 100%; margin-bottom: 15px; }
-        .texto-box { max-height: 300px; overflow-y: auto; background: #fafafa; border: 1px solid #eee; padding: 15px; border-radius: 8px; font-size: 15px; line-height: 1.6; color: #555; }
-        .fecha { font-size: 12px; color: #999; margin-top: 10px; text-align: right; }
-        .minuto { color: #007bff; cursor: pointer; font-weight: bold; background: #e7f1ff; padding: 3px 8px; border-radius: 6px; margin-right: 5px; display: inline-block; margin-bottom: 5px; font-size: 14px; }
-        .minuto:hover { background: #007bff; color: white; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2563EB" />
+  <title>Mis Transcripciones</title>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --primary: #2563eb; --primary-dark: #1d4ed8; --primary-light: #e8f1ff; --danger: #dc2626; --danger-light: #fff1f2; --text: #111827; --text-secondary: #64748b; --background: #f7f9fc; --surface: #ffffff; --border: #e2e8f0; --radius-lg: 22px; --shadow-sm: 0 4px 16px rgba(15, 23, 42, 0.06); }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { min-height: 100vh; background: var(--background); color: var(--text); font-family: "Poppins", sans-serif; font-size: 16px; line-height: 1.6; }
+    button { border: 0; cursor: pointer; font: inherit; }
+    a { color: inherit; text-decoration: none; }
+    .topbar { position: sticky; top: 0; z-index: 20; background: rgba(247, 249, 252, 0.92); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(226, 232, 240, 0.8); }
+    .topbar-inner { width: min(100% - 32px, 760px); min-height: 64px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; }
+    .brand-mark { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; background: var(--primary); color: white; }
+    main { width: min(100% - 32px, 760px); margin: 0 auto; padding: 28px 0 100px; }
+    .hero { margin-bottom: 24px; }
+    .eyebrow { margin-bottom: 4px; color: var(--primary); font-size: 0.82rem; font-weight: 600; }
+    h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.025em; }
+    .record-card { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); margin-bottom: 20px; }
+    .record-body { padding: 20px; }
+    .record-title { font-size: 1.1rem; font-weight: 600; color: var(--text); display: flex; justify-content: space-between; align-items: center; }
+    .record-meta { margin-top: 4px; color: var(--text-secondary); font-size: 0.8rem; }
+    .audio-player { width: 100%; height: 45px; margin: 15px 0; accent-color: var(--primary); }
+    .transcript { color: #334155; font-size: 0.9rem; line-height: 1.8; background: #f8fafc; padding: 15px; border-radius: 12px; max-height: 250px; overflow-y: auto; }
+    .timestamp, .minuto { color: var(--primary); font-weight: 600; cursor: pointer; background: var(--primary-light); padding: 3px 8px; border-radius: 6px; margin-right: 5px; font-size: 0.8rem; display: inline-block; margin-bottom: 5px; }
+    .minuto:hover { background: var(--primary); color: white; }
+    .record-actions { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--border); }
+    .action-btn { min-height: 50px; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: transparent; color: var(--primary); font-size: 0.75rem; font-weight: 600; }
+    .action-btn + .action-btn { border-left: 1px solid var(--border); }
+    .action-btn.delete { color: var(--danger); }
+    .bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; padding: 8px 16px; background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(16px); border-top: 1px solid var(--border); }
+    .bottom-nav-inner { width: min(100%, 760px); margin: 0 auto; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .nav-item { min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 14px; color: var(--text-secondary); font-size: 0.68rem; font-weight: 500; }
+    .nav-item.active { color: var(--primary); background: var(--primary-light); font-weight: 600; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <a href="/" class="btn btn-primary">⬅️ Volver a transcribir</a>
-        <h1>📚 Mi Historial</h1>
-
-        {% if not notas %}
-            <p style='text-align:center; color:#666;'>Aún no tenés transcripciones guardadas.</p>
-        {% else %}
-            {% for nota in notas %}
-                <div class="card">
-                    <h3>📄 <span id="titulo-texto-{{ nota.id }}">{{ nota.titulo }}</span> 
-                    <button type="button" data-id="{{ nota.id }}" onclick="editarTitulo(this)" style="background: none; border: none; color: #6c757d; cursor: pointer; font-size: 16px; padding: 0 5px;">✏️Editar</button>
-                    </h3>
-                    {% if nota.audio_url %}
-                        <audio id="audio-{{ nota.id }}" controls src="{{ nota.audio_url }}"></audio>
-                    {% endif %}
-                    
-                    <!-- Acá mostramos el texto que Python ya armó -->
-                                        <div class="texto-box">
-                        {{ nota.texto_html | safe }}
-                    </div>
-                    
-                    <div class="fecha">Guardado el: {{ nota.fecha }} | Motor: {{ nota.motor_usado }}</div>
-                    
-                    <div style="margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px;">
-                        <a href="/editar/{{ nota.id }}?email={{ email }}" style="background: #ffc107; color: #333; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">✏️ Editar</a>
-                        <button type="button" onclick="descargarWord('{{ nota.id }}')" style="background: #17a2b8; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">📄 Word</button>
-            
-                        <form id="form-borrar-{{ nota.id }}" action="/borrar/{{ nota.id }}" method="post">
-                            <input type="hidden" name="email" value="{{ email }}">
-                            <button type="button" data-id="{{ nota.id }}" onclick="confirmarBorrado(this)" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">🗑️ Borrar</button>
-                        </form>
-                    </div>
-                </div>
-                    
-                </div>
-            {% endfor %}
-        {% endif %}
-
-             <script>
-            function confirmarBorrado(boton) {
-                // Leemos el ID que le pusimos al botón en el data-id
-                const id = boton.getAttribute('data-id');
-                
-                Swal.fire({
-                    title: '¿Estás segura?',
-                    text: "¡No vas a poder revertir esto! El texto y el audio se van a borrar para siempre.",
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#dc3545',
-                    cancelButtonColor: '#6c757d',
-                    confirmButtonText: 'Sí, ¡borrar!',
-                    cancelButtonText: 'Cancelar'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        // Si confirma, agarramos el formulario con ese ID y lo enviamos
-                        document.getElementById('form-borrar-' + id).submit();
-                    }
-                })
-            }
-
-            function saltarAHistorial(segundos, id) {
-                const audio = document.getElementById('audio-' + id);
-                audio.currentTime = segundos;
-                audio.play();
-            }
-    
-                        function editarTitulo(boton) {
-                const id = boton.getAttribute('data-id');
-                const tituloActual = document.getElementById('titulo-texto-' + id).innerText;
-
-                Swal.fire({
-                    title: 'Editar título',
-                    input: 'text',
-                    inputValue: tituloActual,
-                    inputAttributes: { autocapitalize: 'off' },
-                    showCancelButton: true,
-                    confirmButtonText: 'Guardar',
-                    cancelButtonText: 'Cancelar',
-                    showLoaderOnConfirm: true,
-                    preConfirm: (nuevoTitulo) => {
-                        // Si está vacío, le ponemos "Sin título"
-                        if (!nuevoTitulo.trim()) nuevoTitulo = "Sin título";
-                        
-                        // Mandamos el nuevo título a Python
-                        return fetch(`/editar-titulo/${id}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ titulo: nuevoTitulo, email: '{{ email }}' })
-                        }).then(response => {
-                            if (!response.ok) throw new Error("Error al guardar")
-                            return response.json()
-                        }).catch(error => {
-                            Swal.showValidationMessage(`Error: ${error}`)
-                        })
-                    },
-                    allowOutsideClick: () => !Swal.isLoading()
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        // Si se guardó bien, actualizamos el texto en la pantalla sin recargar
-                        document.getElementById('titulo-texto-' + id).innerText = result.value.titulo;
-                        Swal.fire('¡Listo!', 'El título se actualizó.', 'success');
-                    }
-                })
-            }
-
-            function saltarAHistorial(segundos, id) {
-                const audio = document.getElementById('audio-' + id);
-                audio.currentTime = segundos;
-                audio.play();
-            }
-
-                        function descargarWord(id) {
-                Swal.fire({
-                    title: 'Descargar en Word',
-                    text: '¿Querés que el texto incluya los minutitos ([00:00])?',
-                    icon: 'question',
-                    showDenyButton: true,
-                    showCancelButton: true,
-                    confirmButtonText: 'Sí, con minutos',
-                    denyButtonText: 'No, solo texto',
-                    cancelButtonText: 'Cancelar'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        window.location.href = `/descargar/${id}?con_minutos=true`;
-                    } else if (result.isDenied) {
-                        window.location.href = `/descargar/${id}?con_minutos=false`;
-                    }
-                })
-            }
-            
-        </script>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="/" class="brand">
+        <span class="brand-mark">🎙️</span>
+        <span class="brand-text">Transcriptor Facu</span>
+      </a>
     </div>
+  </header>
+
+  <main>
+    <div class="hero">
+      <p class="eyebrow">Tus clases guardadas</p>
+      <h1>Historial</h1>
+    </div>
+
+    {% if not notas %}
+      <div style="text-align:center; color:var(--text-secondary); margin-top: 50px;">
+        <p>Aún no tenés transcripciones guardadas.</p>
+      </div>
+    {% else %}
+      {% for nota in notas %}
+        <article class="record-card">
+          <div class="record-body">
+            <div class="record-title">
+              <span id="titulo-texto-{{ nota.id }}">{{ nota.titulo }}</span>
+              <button type="button" data-id="{{ nota.id }}" onclick="editarTitulo(this)" style="background:none; border:none; color:#64748b; cursor:pointer; font-size:1rem;">✏️</button>
+            </div>
+            <div class="record-meta">Guardado el: {{ nota.fecha }} | Motor: {{ nota.motor_usado }}</div>
+            
+            {% if nota.audio_url %}
+              <audio id="audio-{{ nota.id }}" class="audio-player" controls src="{{ nota.audio_url }}"></audio>
+            {% endif %}
+            
+            <div class="transcript">
+              {{ nota.texto_html | safe }}
+            </div>
+          </div>
+          
+          <div class="record-actions">
+            <a href="/editar/{{ nota.id }}?email={{ email }}" class="action-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" /></svg>
+              Editar
+            </a>
+            <button type="button" onclick="descargarWord('{{ nota.id }}')" class="action-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+              Word
+            </button>
+            <form id="form-borrar-{{ nota.id }}" action="/borrar/{{ nota.id }}" method="post" style="margin:0;">
+              <input type="hidden" name="email" value="{{ email }}">
+              <button type="button" data-id="{{ nota.id }}" onclick="confirmarBorrado(this)" class="action-btn delete" style="width:100%; border:none;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /></svg>
+                Borrar
+              </button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    {% endif %}
+  </main>
+
+  <nav class="bottom-nav">
+    <div class="bottom-nav-inner">
+      <a href="/" class="nav-item">🏠 Inicio</a>
+      <a href="/historial?email={{ email }}" class="nav-item active">📚 Historial</a>
+    </div>
+  </nav>
+
+  <script>
+    function saltarAHistorial(segundos, id) {
+      const audio = document.getElementById('audio-' + id);
+      if(audio) { audio.currentTime = segundos; audio.play(); }
+    }
+
+    function descargarWord(id) {
+      Swal.fire({
+        title: 'Descargar en Word', text: '¿Querés que incluya los minutitos?', icon: 'question',
+        showDenyButton: true, showCancelButton: true,
+        confirmButtonText: 'Sí, con minutos', denyButtonText: 'No, solo texto', cancelButtonText: 'Cancelar'
+      }).then((result) => {
+        if (result.isConfirmed) { window.location.href = `/descargar/${id}?con_minutos=true`; } 
+        else if (result.isDenied) { window.location.href = `/descargar/${id}?con_minutos=false`; }
+      })
+    }
+
+    function confirmarBorrado(boton) {
+      const id = boton.getAttribute('data-id');
+      Swal.fire({
+        title: '¿Estás segura?', text: "¡No vas a poder revertir esto!", icon: 'warning',
+        showCancelButton: true, confirmButtonColor: '#dc2626', cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, ¡borrar!', cancelButtonText: 'Cancelar'
+      }).then((result) => {
+        if (result.isConfirmed) { document.getElementById('form-borrar-' + id).submit(); }
+      })
+    }
+
+    function editarTitulo(boton) {
+      const id = boton.getAttribute('data-id');
+      const tituloActual = document.getElementById('titulo-texto-' + id).innerText;
+      Swal.fire({
+        title: 'Editar título', input: 'text', inputValue: tituloActual,
+        showCancelButton: true, confirmButtonText: 'Guardar', cancelButtonText: 'Cancelar',
+        showLoaderOnConfirm: true,
+        preConfirm: (nuevoTitulo) => {
+          if (!nuevoTitulo.trim()) nuevoTitulo = "Sin título";
+          return fetch(`/editar-titulo/${id}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ titulo: nuevoTitulo, email: '{{ email }}' })
+          }).then(response => { if (!response.ok) throw new Error("Error"); return response.json() })
+            .catch(error => { Swal.showValidationMessage(`Error: ${error}`) })
+        }
+      }).then((result) => {
+        if (result.isConfirmed) {
+          document.getElementById('titulo-texto-' + id).innerText = result.value.titulo;
+          Swal.fire('¡Listo!', 'El título se actualizó.', 'success');
+        }
+      })
+    }
+  </script>
 </body>
 </html>

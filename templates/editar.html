@@ -1,149 +1,247 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editar Transcripción</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #1a1a1a; }
-        .container { max-width: 800px; margin: 20px auto; }
-        .card { background: white; border-radius: 16px; padding: 24px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
-        h1 { font-size: 24px; color: #333; margin-top: 0; text-align: center; }
-        h3 { margin-top: 0; color: #333; font-size: 18px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
-        .titulo-input { width: 100%; font-size: 18px; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-weight: bold; }
-        audio { width: 100%; margin-bottom: 20px; border-radius: 12px; }
-        
-        /* La caja editable mágica */
-        .editor-box { 
-            height: 450px; 
-            overflow-y: auto; 
-            background: #fafafa; 
-            border: 1px solid #ccc; 
-            padding: 15px; 
-            border-radius: 8px; 
-            font-size: 16px; 
-            line-height: 1.6; 
-            color: #333; 
-        }
-        .editor-box:focus { outline: none; border-color: #007bff; background: #fff; }
-        
-        /* Cada línea de texto */
-        .linea { margin-bottom: 8px; }
-        .minuto { 
-            color: #007bff; 
-            cursor: pointer; 
-            font-weight: bold; 
-            background: #e7f1ff; 
-            padding: 2px 8px; 
-            border-radius: 6px; 
-            margin-right: 8px; 
-            font-size: 14px; 
-            display: inline-block; /* Para que quede al lado del texto */
-            user-select: none; /* Para que no lo seleccionen al editar */
-        }
-        .minuto:hover { background: #007bff; color: white; }
-        .texto-editable { display: inline; } /* El texto fluye al lado del minutito */
-        
-        .btn { display: inline-block; padding: 12px 24px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; text-decoration: none; margin-top: 20px; }
-        .btn-success { background: #28a745; color: white; }
-        .btn-secondary { background: #e9ecef; color: #666; margin-left: 10px; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2563EB" />
+  <title>Transcriptor Facu — Editar Transcripción</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --blue-700: #1D4ED8; --blue-600: #2563EB; --blue-500: #3B82F6; --blue-100: #DBEAFE; --blue-50: #EFF6FF;
+      --green-600: #16A34A; --green-700: #15803D;
+      --red-600: #DC2626; --red-50: #FEF2F2;
+      --ink-900: #111827; --ink-800: #1F2937; --ink-700: #374151; --ink-600: #4B5563; --ink-500: #6B7280;
+      --surface: #FFFFFF; --background: #F5F7FA; --border: #E5E7EB; --border-blue: #BFDBFE;
+      --shadow-sm: 0 2px 10px rgba(17, 24, 39, 0.05); --shadow-md: 0 8px 24px rgba(17, 24, 39, 0.08); --shadow-lg: 0 16px 40px rgba(17, 24, 39, 0.10);
+      --radius-sm: 10px; --radius-md: 16px; --radius-lg: 22px;
+      --content-width: 960px; --focus-ring: 0 0 0 4px rgba(37, 99, 235, 0.18);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { min-height: 100vh; background: var(--background); color: var(--ink-900); font-family: "Inter", system-ui, sans-serif; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+    button, input, textarea, audio { font: inherit; }
+    button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .app-shell { width: 100%; min-height: 100vh; padding-bottom: 110px; }
+    .topbar { position: sticky; top: 0; z-index: 1000; background: rgba(255, 255, 255, 0.94); border-bottom: 1px solid rgba(229, 231, 235, 0.92); backdrop-filter: blur(16px); }
+    .topbar-inner { width: min(100%, var(--content-width)); min-height: 68px; margin: 0 auto; display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 12px; padding: 10px 16px; }
+    .icon-button { width: 44px; height: 44px; display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--ink-800); text-decoration: none; }
+    .icon-button:hover { background: var(--blue-50); }
+    .icon-button svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .page-title { text-align: center; font-family: "Poppins", sans-serif; font-size: 1.2rem; font-weight: 700; color: var(--ink-900); }
+    main { width: min(100%, var(--content-width)); margin: 0 auto; padding: 16px; }
+    .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+    .audio-sticky { position: sticky; top: 78px; z-index: 900; margin-bottom: 16px; }
+    .audio-card { padding: 14px; background: #111827; border: 1px solid #1F2937; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+    .audio-topline { display: flex; align-items: center; gap: 12px; }
+    .play-button { flex: 0 0 auto; width: 54px; height: 54px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--blue-600); color: white; box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35); }
+    .play-button svg { width: 24px; height: 24px; fill: currentColor; stroke: none; }
+    .time-label { flex: 0 0 auto; color: #FFFFFF; font-size: 0.83rem; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 40px; }
+    .progress-wrap { flex: 1; min-width: 0; }
+    .progress { width: 100%; height: 8px; appearance: none; border-radius: 999px; background: #374151; cursor: pointer; }
+    .progress::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--blue-500); border: 3px solid #FFFFFF; box-shadow: 0 2px 7px rgba(0,0,0,0.25); }
+    .speed-button, .volume-button { display: inline-grid; place-items: center; flex: 0 0 auto; min-width: 42px; height: 38px; padding: 0 10px; border: 1px solid #374151; border-radius: 12px; background: #1F2937; color: #FFFFFF; font-size: 0.78rem; font-weight: 700; }
+    .volume-button { width: 42px; padding: 0; }
+    .waveform { height: 40px; margin-top: 10px; display: flex; align-items: center; gap: 3px; overflow: hidden; opacity: 0.6; }
+    .waveform span { width: 3px; flex: 0 0 3px; border-radius: 999px; background: #93C5FD; }
+    .title-card { padding: 18px; margin-bottom: 16px; }
+    .field-label { display: block; margin-bottom: 9px; color: var(--ink-700); font-size: 0.92rem; font-weight: 700; }
+    .title-input { width: 100%; min-height: 54px; padding: 12px 16px; border: 1.5px solid #93C5FD; border-radius: 14px; background: #FFFFFF; color: var(--ink-900); font-size: 1rem; font-weight: 600; }
+    .title-input:focus { border-color: var(--blue-600); box-shadow: var(--focus-ring); outline: none; }
+    .helper-note { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; padding: 13px 14px; border: 1px solid var(--border-blue); border-radius: 14px; background: var(--blue-50); color: #1E40AF; font-size: 0.86rem; font-weight: 600; }
+    .transcript-card { padding: 18px; }
+    .transcript-header { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+    .transcript-title { font-family: "Poppins", sans-serif; font-size: 1rem; font-weight: 700; }
+    .transcript-hint { color: var(--ink-500); font-size: 0.8rem; font-weight: 500; }
+    .transcript-editor { min-height: 400px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: #FBFDFF; }
+    .transcript-editor:focus { outline: none; border-color: var(--blue-600); box-shadow: var(--focus-ring); }
+    .transcript-line { display: grid; grid-template-columns: auto 1fr; align-items: start; gap: 12px; padding: 8px 0; border-bottom: 1px solid #F1F5F9; }
+    .transcript-line:last-child { border-bottom: 0; }
+    .timestamp { align-self: start; display: inline-flex; align-items: center; min-height: 34px; padding: 5px 9px; border: 1px solid #BFDBFE; border-radius: 10px; background: var(--blue-50); color: var(--blue-700); font-size: 0.78rem; font-weight: 800; cursor: pointer; user-select: none; }
+    .timestamp:hover { background: var(--blue-100); }
+    .editable-text { width: 100%; padding: 4px 0; color: var(--ink-800); font-size: 1rem; line-height: 1.75; font-weight: 450; }
+    .actions-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; padding: 10px 16px; background: rgba(255, 255, 255, 0.96); border-top: 1px solid var(--border); box-shadow: 0 -8px 24px rgba(17, 24, 39, 0.08); backdrop-filter: blur(14px); }
+    .actions-inner { width: min(100%, var(--content-width)); margin: 0 auto; display: grid; grid-template-columns: 1fr 1.45fr; gap: 10px; }
+    .btn { min-height: 52px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 12px 16px; border-radius: 14px; font-size: 0.92rem; font-weight: 750; border: 1.5px solid transparent; text-decoration: none; }
+    .btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .btn-secondary { background: #FFFFFF; border-color: var(--blue-600); color: var(--blue-700); }
+    .btn-primary { background: var(--blue-600); color: #FFFFFF; box-shadow: 0 7px 20px rgba(37, 99, 235, 0.26); border: none; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="card">
-            <h1>✏️ Editor de Transcripción</h1>
-            <audio id="reproductor" controls src="{{ nota.audio_url }}"></audio>
-            
-            <form id="form-edicion" action="/guardar-edicion/{{ nota.id }}?email={{ email }}" method="post">
-                <input type="hidden" name="email" value="{{ email }}">
-                <input type="text" name="titulo" value="{{ nota.titulo }}" class="titulo-input" required>
-                
-                <h3>📝 Texto (Editá lo que necesites corregir)</h3>
-                <!-- El input oculto que guarda el texto para enviarlo -->
-                <input type="hidden" name="texto" id="texto-oculto">
-                
-                <!-- La caja editable mágica. El 'contenteditable' hace que se pueda escribir acá -->
-                <div class="editor-box" contenteditable="true" id="caja-texto">
-                    {{ nota.texto_html | safe }}
-                </div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a href="/historial?email={{ email }}" class="icon-button" aria-label="Volver">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+        </a>
+        <h1 class="page-title">Editar Transcripción</h1>
+        <div style="width: 44px;"></div>
+      </div>
+    </header>
 
-                <div style="text-align: right;">
-                    <button type="submit" class="btn btn-success">💾 Guardar Cambios</button>
-                    <a href="/historial?email={{ email }}" class="btn btn-secondary">Cancelar</a>
-                </div>
-            </form>
+    <main>
+      <section class="audio-sticky" aria-label="Reproductor">
+        <div class="audio-card">
+          <div class="audio-topline">
+            <button class="play-button" type="button" id="playButton" aria-label="Reproducir">
+              <svg viewBox="0 0 24 24" aria-hidden="true" id="playIcon"><path d="M8 5v14l11-7z" /></svg>
+            </button>
+            <span class="time-label" id="currentTime">00:00</span>
+            <div class="progress-wrap">
+              <input id="progressBar" class="progress" type="range" min="0" max="100" value="0" step="0.1" aria-label="Progreso" />
+            </div>
+            <span class="time-label" id="duration">00:00</span>
+            <button class="speed-button" type="button" id="speedButton">1x</button>
+          </div>
+          <div class="waveform" aria-hidden="true" id="waveform"></div>
+          <audio id="audio" src="{{ nota.audio_url }}" preload="metadata"></audio>
         </div>
+      </section>
+
+      <form id="form-edicion" action="/guardar-edicion/{{ nota.id }}?email={{ email }}" method="post">
+        <input type="hidden" name="email" value="{{ email }}">
+        <input type="hidden" name="texto" id="texto-oculto">
+
+        <section class="section-card title-card">
+          <label class="field-label" for="classTitle">Título de la clase</label>
+          <input class="title-input" id="classTitle" type="text" name="titulo" value="{{ nota.titulo }}" required />
+        </section>
+
+        <div class="helper-note" role="note">
+          <svg viewBox="0 0 24 24" aria-hidden="true" style="width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:2;"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></svg>
+          <p>Hacé clic en los <strong>minutitos azules</strong> para saltar al audio. Podés corregir el texto libremente.</p>
+        </div>
+
+        <section class="section-card transcript-card">
+          <div class="transcript-header">
+            <h2 class="transcript-title">Texto de la transcripción</h2>
+          </div>
+          
+          <div class="transcript-editor" contenteditable="true" id="caja-texto">
+            {{ nota.texto_html | safe }}
+          </div>
+        </section>
+      </form>
+    </main>
+  </div>
+
+  <footer class="actions-bar">
+    <div class="actions-inner">
+      <a href="/historial?email={{ email }}" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18" /><path d="M6 6l12 12" /></svg>
+        <span>Cancelar</span>
+      </a>
+      <button class="btn btn-primary" type="button" onclick="guardarCambios()">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l2 2v14H5z" /><path d="M8 4v6h8V4" /><path d="M8 20v-6h8v6" /></svg>
+        <span>Guardar Cambios</span>
+      </button>
     </div>
+  </footer>
 
-        <script>
-        function saltarA(segundos) {
-            const audio = document.getElementById('reproductor');
-            audio.currentTime = segundos;
-            audio.play();
+  <script>
+    // --- LÓGICA DEL REPRODUCTOR ---
+    const audio = document.getElementById('audio');
+    const playButton = document.getElementById('playButton');
+    const playIcon = document.getElementById('playIcon');
+    const progressBar = document.getElementById('progressBar');
+    const currentTimeLabel = document.getElementById('currentTime');
+    const durationLabel = document.getElementById('duration');
+    const speedButton = document.getElementById('speedButton');
+    const speeds = [1, 1.25, 1.5, 1.75, 2];
+    let speedIndex = 0;
+
+    function formatTime(seconds) {
+      if (!Number.isFinite(seconds)) return '00:00';
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function updatePlayButton() {
+      playIcon.innerHTML = audio.paused ? '<path d="M8 5v14l11-7z" />' : '<path d="M7 5h4v14H7zM13 5h4v14h-4z" />';
+    }
+
+    playButton.addEventListener('click', async () => {
+      if (audio.paused) await audio.play(); else audio.pause();
+      updatePlayButton();
+    });
+    audio.addEventListener('play', updatePlayButton);
+    audio.addEventListener('pause', updatePlayButton);
+    audio.addEventListener('loadedmetadata', () => durationLabel.textContent = formatTime(audio.duration));
+    audio.addEventListener('timeupdate', () => {
+      currentTimeLabel.textContent = formatTime(audio.currentTime);
+      if (audio.duration) progressBar.value = (audio.currentTime / audio.duration) * 100;
+    });
+    progressBar.addEventListener('input', () => { if (audio.duration) audio.currentTime = (Number(progressBar.value) / 100) * audio.duration; });
+    speedButton.addEventListener('click', () => {
+      speedIndex = (speedIndex + 1) % speeds.length;
+      audio.playbackRate = speeds[speedIndex];
+      speedButton.textContent = `${speeds[speedIndex]}x`;
+    });
+
+    // Salto de audio al clickear minutito
+    function saltarA(segundos) {
+      audio.currentTime = segundos;
+      audio.play().catch(() => {});
+    }
+
+    // --- BLINDAJE DEL EDITOR ---
+    const cajaTexto = document.getElementById('caja-texto');
+    cajaTexto.addEventListener('keydown', function(e) {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+
+      if (e.key === 'Enter') { e.preventDefault(); return; }
+
+      const isActionKey = e.key === 'Backspace' || e.key === 'Delete';
+      const isTyping = e.key.length === 1; 
+
+      if (!sel.isCollapsed) {
+        if (isActionKey || isTyping) {
+          const minutes = document.querySelectorAll('.timestamp');
+          for (let i = 0; i < minutes.length; i++) {
+            if (range.intersectsNode(minutes[i])) { e.preventDefault(); return; }
+          }
         }
+      } else {
+        let container = range.startContainer;
+        let parent = container.nodeType === 3 ? container.parentElement : container;
 
-        const cajaTexto = document.getElementById('caja-texto');
-
-        cajaTexto.addEventListener('keydown', function(e) {
-            const sel = window.getSelection();
-            if (!sel.rangeCount) return;
-            const range = sel.getRangeAt(0);
-
-            // 1. Bloquear Enter siempre
-            if (e.key === 'Enter') {
+        if (isTyping || isActionKey) {
+            // Solo permitimos escribir si estamos adentro del texto editable
+            if (!parent.classList.contains('editable-text')) {
                 e.preventDefault();
                 return;
             }
+            if (e.key === 'Backspace' && range.startOffset === 0) { e.preventDefault(); return; }
+            if (e.key === 'Delete' && container.nodeType === 3 && range.startOffset === container.length) { e.preventDefault(); return; }
+        }
+      }
+    });
 
-            const isActionKey = e.key === 'Backspace' || e.key === 'Delete';
-            const isTyping = e.key.length === 1; 
+       // --- GUARDAR CAMBIOS ---
+    function guardarCambios() {
+      let texto = cajaTexto.innerText;
+      
+      // El navegador mete un salto de línea entre el minutito y el texto por el diseño. Se lo borramos.
+      // Esto busca un corchete cerrado ], seguido de saltos de línea, y lo reemplaza por ] y un espacio
+      texto = texto.replace(/\]\s*\n/g, '] ');
+      
+      // Limpiamos saltos de línea dobles que queden
+      texto = texto.replace(/\n\n/g, '\n').trim();
+      
+      document.getElementById('texto-oculto').value = texto;
+      document.getElementById('form-edicion').submit();
+    }
 
-            // 2. Si hay texto seleccionado (resaltado en azul)
-            if (!sel.isCollapsed) {
-                if (isActionKey || isTyping) {
-                    const minutes = document.querySelectorAll('.minuto');
-                    for (let i = 0; i < minutes.length; i++) {
-                        if (range.intersectsNode(minutes[i])) {
-                            e.preventDefault();
-                            return;
-                        }
-                    }
-                }
-            } else {
-                // 3. Si NO hay texto seleccionado (solo el cursor parpadeando)
-                let container = range.startContainer;
-                let parent = container.nodeType === 3 ? container.parentElement : container;
-
-                // ZONA DE SEGURIDAD: Si intentan escribir o borrar
-                if (isTyping || isActionKey) {
-                    // Si el cursor NO está adentro de un 'texto-editable', bloqueamos TODAS las teclas
-                    if (!parent.classList.contains('texto-editable')) {
-                        e.preventDefault();
-                        return;
-                    }
-
-                    // Si están adentro del texto, revisamos los bordes para que no se coman el minutito
-                    if (e.key === 'Backspace' && range.startOffset === 0) {
-                        e.preventDefault(); // Bloquea borrar hacia atrás si está en el inicio
-                        return;
-                    }
-                    if (e.key === 'Delete') {
-                        if (container.nodeType === 3 && range.startOffset === container.length) {
-                            e.preventDefault(); // Bloquea suprimir si está en el final del texto
-                            return;
-                        }
-                    }
-                }
-            }
-        });
-
-        // Antes de enviar el formulario, copiamos el texto y lo limpiamos
-        document.getElementById('form-edicion').addEventListener('submit', function(e) {
-            let texto = cajaTexto.innerText;
-            texto = texto.replace(/\n\n/g, '\n').trim();
-            document.getElementById('texto-oculto').value = texto;
-        });
-    </script>
+    // Crear waveform decorativa
+    const waveform = document.getElementById('waveform');
+    const bars = [16, 27, 34, 21, 44, 31, 19, 39, 25, 48, 29, 22, 36, 52, 28, 18, 40, 32, 55, 37, 23, 44, 30, 20, 47, 34, 26, 41, 58, 35, 22, 39];
+    bars.forEach((h) => { const bar = document.createElement('span'); bar.style.height = `${h}px`; waveform.appendChild(bar); });
+  </script>
 </body>
 </html>
