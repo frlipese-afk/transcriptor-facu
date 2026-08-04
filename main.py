@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, File, UploadFile, Form, Request, Body, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, Form, Request, Body, BackgroundTasks, Cookie
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from groq import Groq
@@ -15,7 +15,9 @@ import uuid
 import subprocess
 import glob
 import imageio_ffmpeg
+from datetime import datetime, timezone, timedelta
 
+ADMIN_PASSWORD = "narizdequeso" # ¡Cambiá esto por tu contraseña!
 
 app = FastAPI()
 # Le decimos a FastAPI dónde están los HTML
@@ -53,6 +55,7 @@ ESTADOS_TRANSCRIPCION = {}
 # --- 1. RUTA QUE RECIBE EL AUDIO Y EMPIEZA A TRABAJAR POR DETRÁS ---
 @app.post("/iniciar-transcripcion")
 async def iniciar_transcripcion(background_tasks: BackgroundTasks, email: str = Form(...), motor: str = Form(...), audio: UploadFile = File(...)):
+    
     job_id = str(uuid.uuid4())
     audio_bytes = await audio.read()
     
@@ -60,6 +63,9 @@ async def iniciar_transcripcion(background_tasks: BackgroundTasks, email: str = 
     
     # Le pasamos el motor a la función de fondo
     background_tasks.add_task(transcribir_en_fondo, job_id, email, audio.filename, audio.content_type, audio_bytes, motor)
+    
+    # Actualizar última actividad
+    supabase.table("usuarios").update({"ultima_actividad": "now()"}).eq("email", email).execute()
     
     return {"job_id": job_id}
 
@@ -212,6 +218,9 @@ async def resultado_transcripcion(job_id: str):
 # --- HISTORIAL ---
 @app.get("/historial", response_class=HTMLResponse)
 async def ver_historial(request: Request, email: str):
+        # Actualizar última actividad
+    supabase.table("usuarios").update({"ultima_actividad": "now()"}).eq("email", email).execute()
+    
     response = supabase.table("transcripciones").select("id, titulo, texto, fecha, audio_url").eq("user_email", email).order("fecha", desc=True).execute()
     notas = response.data
     
@@ -247,19 +256,65 @@ async def ver_historial(request: Request, email: str):
     })
 
 
-# --- PANEL DE ADMIN ---
+# --- PANEL DE ADMINISTRACIÓN SECRETO (CON CONTRASEÑA) ---
 @app.get("/admin-secreto", response_class=HTMLResponse)
-async def panel_admin():
+async def panel_admin(request: Request, admin_auth: str = Cookie(None)):
+    # 1. Revisar si tiene la cookie de admin
+    if admin_auth != "autorizado":
+        # Si no la tiene, mostrar formulario de contraseña
+        return """
+        <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin Login</title>
+        <style>body { font-family: Arial; background: #e9ecef; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; } .card { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; } input { padding: 15px; width: 100%; box-sizing: border-box; margin: 10px 0; border-radius: 8px; border: 1px solid #ccc; } button { background: #2563eb; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; }</style></head>
+        <body>
+            <div class="card">
+                <h2>🔒 Acceso Restringido</h2>
+                <form action="/admin-login" method="post">
+                    <input type="password" name="passw" placeholder="Contraseña de Admin" required>
+                    <button type="submit">Entrar al panel</button>
+                </form>
+            </div>
+        </body></html>
+        """
+    
+    # 2. Si tiene la cookie, mostrar el panel real
     response = supabase.table("usuarios").select("*").execute()
     usuarios = response.data
+    ahora = datetime.now(timezone.utc)
+    
     tabla_html = ""
     for u in usuarios:
-        tabla_html += f"<tr><td>{u['email']}</td><td>{u['creditos']}</td><td><form action='/agregar-creditos' method='post'><input type='hidden' name='email' value='{u['email']}'><input type='number' name='cantidad' value='5' style='width:60px; padding:5px;'><button type='submit' style='padding:5px 10px; background:green; color:white; border:none; border-radius:3px; cursor:pointer;'>Sumar</button></form></td></tr>"
+        ultima_str = "Nunca"
+        estado_dot = "⚪"
+        if u.get('ultima_actividad'):
+            try:
+                ultima_dt = datetime.fromisoformat(u['ultima_actividad'].replace('Z', '+00:00'))
+                diff = ahora - ultima_dt
+                if diff < timedelta(minutes=5): estado_dot = "🟢"
+                elif diff < timedelta(hours=1): estado_dot = "🟡"
+                else: estado_dot = "🔴"
+                ultima_str = ultima_dt.astimezone().strftime('%d/%m %H:%M')
+            except: pass
+
+        tabla_html += f"<tr><td>{estado_dot} {u['email']}</td><td>{u['creditos']}</td><td style='font-size:12px; color:#666;'>{ultima_str}</td><td><form action='/agregar-creditos' method='post'><input type='hidden' name='email' value='{u['email']}'><input type='number' name='cantidad' value='5' style='width:60px; padding:5px;'><button type='submit' style='padding:5px 10px; background:green; color:white; border:none; border-radius:3px; cursor:pointer;'>Sumar</button></form></td></tr>"
 
     return f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin</title><style>body {{ font-family: Arial; padding: 20px; background: #e9ecef; }} .contenedor {{ max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; }} table {{ border-collapse: collapse; width: 100%; margin-top: 20px; }} th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }} th {{ background-color: #f2f2f2; }}</style></head>
-    <body><div class="contenedor"><h1>Panel de Administración 🛠️</h1><table><tr><th>Email</th><th>Créditos Actuales</th><th>Sumar Créditos</th></tr>{tabla_html}</table><br><h3>Registrar nuevo usuario:</h3><form action='/agregar-creditos' method='post'>Email: <input type='email' name='email' required style='padding:8px;'>Créditos: <input type='number' name='cantidad' value='5' style='width:60px; padding:8px;'><button type='submit' style='padding:8px 15px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;'>Crear y Sumar</button></form></div></body></html>
+    <body><div class="contenedor"><h1>Panel de Administración 🛠️</h1><table><tr><th>Usuario</th><th>Créditos</th><th>Última Actividad</th><th>Sumar Créditos</th></tr>{tabla_html}</table><br><h3>Registrar nuevo usuario:</h3><form action='/agregar-creditos' method='post'>Email: <input type='email' name='email' required style='padding:8px;'>Créditos: <input type='number' name='cantidad' value='5' style='width:60px; padding:8px;'><button type='submit' style='padding:8px 15px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;'>Crear y Sumar</button></form></div></body></html>
     """
+
+# --- RUTA PARA VALIDAR LA CONTRASEÑA ---
+@app.post("/admin-login")
+async def admin_login(request: Request):
+    # Leemos el formulario de la forma más directa
+    form = await request.form()
+    passw = form.get("passw")
+    
+    if passw == ADMIN_PASSWORD:
+        resp = RedirectResponse(url="/admin-secreto", status_code=303)
+        resp.set_cookie(key="admin_auth", value="autorizado", max_age=86400) # Dura 1 día
+        return resp
+    
+    return "<h3>Contraseña incorrecta. <a href='/admin-secreto'>Volver</a></h3>" 
 
 @app.post("/agregar-creditos")
 async def agregar_creditos(email: str = Form(...), cantidad: int = Form(...)):
