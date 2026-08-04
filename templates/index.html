@@ -71,7 +71,7 @@
         <button class="btn btn-google" onclick="loginConGoogle()">Iniciar sesión con Google</button>
       </div>
 
-      <!-- APP BOX -->
+           <!-- APP BOX -->
       <div id="app-box" style="display: none;">
         <div class="hero">
           <p class="eyebrow">Tu espacio de estudio</p>
@@ -91,15 +91,17 @@
 
         <article class="card">
           <div class="section-heading">Tipo de transcripción</div>
-          <div class="select-wrap" style="position:relative;">
-            <select name="motor" id="motor-select">
-              <option value="groq_turbo">🚀 Rápida (Groq Turbo)</option>
-              <option value="groq_normal">🎯 Precisa (Groq Normal)</option>
-            </select>
-          </div>
-
+          
           <form id="form-subida" action="/iniciar-transcripcion" method="post" enctype="multipart/form-data" onsubmit="subirAudio(event)">
             <input type="hidden" name="email" id="hidden-email">
+            
+            <div class="select-wrap" style="position:relative; margin-bottom: 16px;">
+              <select name="motor" id="motor-select" style="width: 100%; min-height: 54px; appearance: none; border: 1px solid #cbd5e1; border-radius: 16px; background: #fff; color: #111827; padding: 0 48px 0 16px; font-size: 0.94rem; font-weight: 500;">
+                <option value="groq_turbo">🚀 Rápida (Groq Turbo)</option>
+                <option value="groq_normal">🎯 Precisa (Groq Normal)</option>
+              </select>
+            </div>
+
             <div class="upload-zone">
               <input id="audio-upload" class="upload-input" type="file" name="audio" accept="audio/*" required />
               <label class="upload-label" for="audio-upload">
@@ -111,12 +113,14 @@
             <button class="btn btn-primary" type="submit">Subir y Transcribir</button>
           </form>
         </article>
+      </div> <!-- ACÁ CIERRA EL APP-BOX -->
 
-        <div id="procesando-box" class="procesando-box">
-          <h3 id="estado-texto" style="margin: 0; color: var(--primary);">⏳ Procesando...</h3>
-          <div class="progress-track">
-            <div id="barra-carga" class="progress-bar"></div>
-          </div>
+      <!-- LA BARRITA QUEDA AFUERA Y SEPARADA -->
+      <div id="procesando-box" class="procesando-box" style="display: none; margin-top: 20px; padding: 25px; background: #e7f1ff; border-radius: 12px; text-align: center;">
+        <h3 id="estado-texto" style="margin: 0; color: #007bff;">⏳ Procesando...</h3>
+        <p style="font-size: 14px; color: #555; margin-top: 10px;">Dependiendo de tu internet, puede tardar unos minutos.</p>
+        <div style="width: 100%; background: #d0e3ff; border-radius: 10px; height: 15px; margin-top: 15px; overflow: hidden;">
+          <div id="barra-carga" style="width: 0%; background: #007bff; height: 100%; border-radius: 10px; transition: width 0.3s;"></div>
         </div>
       </div>
     </main>
