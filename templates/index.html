@@ -154,20 +154,33 @@
       });
     }
 
-    async function mostrarApp(email) {
-      document.getElementById('login-box').style.display = 'none';
-      document.getElementById('app-box').style.display = 'block';
-      document.getElementById('hidden-email').value = email;
-      document.getElementById('historial-link').href = '/historial?email=' + email;
-      try {
-        let res = await fetch(`https://tfjhtxentxhufvdckkin.supabase.co/rest/v1/usuarios?email=eq.${email}`, {
-          headers: { "apikey": supabaseKey }
-        });
-        let data = await res.json();
-        if(data.length > 0) { document.getElementById('creditos').innerText = data[0].creditos; } 
-        else { document.getElementById('creditos').innerText = "0"; }
-      } catch(e) { document.getElementById('creditos').innerText = "Error"; }
-    }
+            async function mostrarApp(email) {
+            document.getElementById('login-box').style.display = 'none';
+            document.getElementById('app-box').style.display = 'block';
+            document.getElementById('hidden-email').value = email;
+            document.getElementById('historial-link').href = '/historial?email=' + email;
+            try {
+                let res = await fetch(`https://tfjhtxentxhufvdckkin.supabase.co/rest/v1/usuarios?email=eq.${email}`, {
+                    headers: { "apikey": supabaseKey }
+                });
+                let data = await res.json();
+                if(data.length > 0) { 
+                    document.getElementById('creditos').innerText = data[0].creditos; 
+                } else { 
+                    // Si no existe, lo registramos con 0 créditos para que el admin lo vea
+                    await fetch('https://tfjhtxentxhufvdckkin.supabase.co/rest/v1/usuarios', {
+                        method: 'POST',
+                        headers: { 
+                            "apikey": supabaseKey, 
+                            "Content-Type": "application/json", 
+                            "Prefer": "return=minimal" 
+                        },
+                        body: JSON.stringify({ email: email, creditos: 0 })
+                    });
+                    document.getElementById('creditos').innerText = "0 (Pedile al admin)"; 
+                }
+            } catch(e) { document.getElementById('creditos').innerText = "Error al cargar"; }
+        }
 
     let intervaloEstado = null;
     async function subirAudio(event) {

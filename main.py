@@ -295,11 +295,36 @@ async def panel_admin(request: Request, admin_auth: str = Cookie(None)):
                 ultima_str = ultima_dt.astimezone().strftime('%d/%m %H:%M')
             except: pass
 
-        tabla_html += f"<tr><td>{estado_dot} {u['email']}</td><td>{u['creditos']}</td><td style='font-size:12px; color:#666;'>{ultima_str}</td><td><form action='/agregar-creditos' method='post'><input type='hidden' name='email' value='{u['email']}'><input type='number' name='cantidad' value='5' style='width:60px; padding:5px;'><button type='submit' style='padding:5px 10px; background:green; color:white; border:none; border-radius:3px; cursor:pointer;'>Sumar</button></form></td></tr>"
+        tabla_html += f"""
+        <tr>
+            <td style='font-size: 14px;'>{estado_dot} {u['email']}</td>
+            <td style='text-align: center;'><strong style='font-size: 18px; color: #2563eb;'>{u['creditos']}</strong></td>
+            <td style='font-size:12px; color:#666;'>{ultima_str}</td>
+            <td style='white-space: nowrap; text-align: center;'>
+                <!-- Botones rápidos -->
+                <form action='/agregar-creditos' method='post' style='display:inline;'>
+                    <input type='hidden' name='email' value='{u['email']}'>
+                    <input type='hidden' name='cantidad' value='5'>
+                    <button type='submit' style='background:#16a34a; color:white; border:none; border-radius:5px; cursor:pointer; padding:6px 12px; font-weight: bold;'>➕ 5</button>
+                </form>
+                <form action='/agregar-creditos' method='post' style='display:inline; margin-left: 5px;'>
+                    <input type='hidden' name='email' value='{u['email']}'>
+                    <input type='hidden' name='cantidad' value='-5'>
+                    <button type='submit' style='background:#dc3545; color:white; border:none; border-radius:5px; cursor:pointer; padding:6px 12px; font-weight: bold;'>➖ 5</button>
+                </form>
+                <br>
+                <!-- Input manual -->
+                <form action='/agregar-creditos' method='post' style='display:inline-flex; margin-top: 8px; align-items: center; gap: 5px;'>
+                    <input type='hidden' name='email' value='{u['email']}'>
+                    <input type='number' name='cantidad' value='10' style='width: 55px; padding: 5px; border-radius: 5px; border: 1px solid #ccc; text-align: center;'>
+                    <button type='submit' style='background:#2563eb; color:white; border:none; border-radius:5px; cursor:pointer; padding:6px 12px; font-weight: bold;'>✔</button>
+                </form>
+            </td>
+        </tr>"""
 
     return f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin</title><style>body {{ font-family: Arial; padding: 20px; background: #e9ecef; }} .contenedor {{ max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; }} table {{ border-collapse: collapse; width: 100%; margin-top: 20px; }} th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }} th {{ background-color: #f2f2f2; }}</style></head>
-    <body><div class="contenedor"><h1>Panel de Administración 🛠️</h1><table><tr><th>Usuario</th><th>Créditos</th><th>Última Actividad</th><th>Sumar Créditos</th></tr>{tabla_html}</table><br><h3>Registrar nuevo usuario:</h3><form action='/agregar-creditos' method='post'>Email: <input type='email' name='email' required style='padding:8px;'>Créditos: <input type='number' name='cantidad' value='5' style='width:60px; padding:8px;'><button type='submit' style='padding:8px 15px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;'>Crear y Sumar</button></form></div></body></html>
+    <body><div class="contenedor"><h1>Panel de Administración 🛠️</h1><table><tr><th>Usuario</th><th>Créditos</th><th>Última Actividad</th><th>Acciones</th></tr>{tabla_html}</table></div></body></html>
     """
 
 # --- RUTA PARA VALIDAR LA CONTRASEÑA ---
