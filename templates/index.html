@@ -110,9 +110,13 @@
                 <span style="color:var(--text-secondary); font-size:0.78rem;">MP3, WAV, M4A, etc.</span>
               </label>
             </div>
-            <button class="btn btn-primary" type="submit">Subir y Transcribir</button>
+                        <button class="btn btn-primary" type="submit">Subir y Transcribir</button>
           </form>
         </article>
+        
+        <!-- BOTÓN DE CERRAR SESIÓN -->
+        <button onclick="cerrarSesion()" class="btn btn-secondary" style="margin-top: 20px; background: #e9ecef; color: #666; border: 1px solid #d1d5db;">🚪 Cerrar sesión</button>
+        
       </div> <!-- ACÁ CIERRA EL APP-BOX -->
 
       <!-- LA BARRITA QUEDA AFUERA Y SEPARADA -->
@@ -216,6 +220,11 @@
             `;
         }
     });
+
+          async function cerrarSesion() {
+            await supabaseClient.auth.signOut();
+            location.reload();
+        }
 
     checkUser();
   </script>
