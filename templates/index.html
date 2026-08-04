@@ -183,25 +183,33 @@
         }
 
     let intervaloEstado = null;
-    async function subirAudio(event) {
-      event.preventDefault();
-      const form = document.getElementById('form-subida');
-      const formData = new FormData(form);
-      document.getElementById('app-box').style.display = 'none';
-      document.getElementById('procesando-box').style.display = 'block';
-      document.getElementById('estado-texto').innerText = '⬆️ Subiendo audio...';
-      document.getElementById('barra-carga').style.width = '0%';
+            async function subirAudio(event) {
+            event.preventDefault();
+            const form = document.getElementById('form-subida');
+            const formData = new FormData(form);
+            document.getElementById('app-box').style.display = 'none';
+            document.getElementById('procesando-box').style.display = 'block';
+            document.getElementById('estado-texto').innerText = '⬆️ Subiendo audio...';
+            document.getElementById('barra-carga').style.width = '0%';
 
-      try {
-        const response = await fetch('/iniciar-transcripcion', { method: 'POST', body: formData });
-        const data = await response.json();
-        const jobId = data.job_id;
-        intervaloEstado = setInterval(() => chequearEstado(jobId), 1000);
-      } catch (e) {
-        alert("Error al subir el audio.");
-        location.reload();
-      }
-    }
+            try {
+                const response = await fetch('/iniciar-transcripcion', { method: 'POST', body: formData });
+                
+                // Si el servidor dice que no tiene créditos (o cualquier error), lo atrapamos acá
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || "Error al subir el audio.");
+                }
+                
+                const data = await response.json();
+                const jobId = data.job_id;
+                intervaloEstado = setInterval(() => chequearEstado(jobId), 1000);
+            } catch (e) {
+                // Mostramos el error lindo y recargamos la página para volver a mostrar el formulario
+                alert("Error: " + e.message);
+                location.reload();
+            }
+        }
 
     async function chequearEstado(jobId) {
       try {

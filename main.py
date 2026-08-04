@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, File, UploadFile, Form, Request, Body, BackgroundTasks, Cookie
+from fastapi import FastAPI, File, UploadFile, Form, Request, Body, BackgroundTasks, Cookie, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from groq import Groq
@@ -55,23 +55,46 @@ ESTADOS_TRANSCRIPCION = {}
 # --- 1. RUTA QUE RECIBE EL AUDIO Y EMPIEZA A TRABAJAR POR DETRÁS ---
 @app.post("/iniciar-transcripcion")
 async def iniciar_transcripcion(background_tasks: BackgroundTasks, email: str = Form(...), motor: str = Form(...), audio: UploadFile = File(...)):
+    # 1. VERIFICAR Y DESCONTAR CRÉDITOS ANTES DE EMPEZAR
+    response_db = supabase.table("usuarios").select("creditos").eq("email", email).execute()
+    if not response_db.data:
+        raise HTTPException(status_code=403, detail="Tu email no está registrado.")
     
+    creditos_actuales = response_db.data[0]['creditos']
+    costo = 2 if motor == "groq_voces" else 1
+    
+    if creditos_actuales < costo:
+        raise HTTPException(status_code=402, detail=f"No tenés créditos suficientes. Necesitás {costo} y tenés {creditos_actuales}.")
+    
+    # Descontamos los créditos ya!
+    nuevos_creditos = creditos_actuales - costo
+    supabase.table("usuarios").update({"creditos": nuevos_creditos}).eq("email", email).execute()
+    supabase.table("usuarios").update({"ultima_actividad": "now()"}).eq("email", email).execute()
+    
+    # 2. Recién ahora empezamos a trabajar
     job_id = str(uuid.uuid4())
     audio_bytes = await audio.read()
-    
     ESTADOS_TRANSCRIPCION[job_id] = {"estado": "iniciando", "porcentaje": 5}
     
-    # Le pasamos el motor a la función de fondo
-    background_tasks.add_task(transcribir_en_fondo, job_id, email, audio.filename, audio.content_type, audio_bytes, motor)
-    
-    # Actualizar última actividad
-    supabase.table("usuarios").update({"ultima_actividad": "now()"}).eq("email", email).execute()
+    # Le pasamos los nuevos_creditos a la función de fondo para que sepa cuánto mostrar al final
+    background_tasks.add_task(transcribir_en_fondo, job_id, email, audio.filename, audio.content_type, audio_bytes, motor, nuevos_creditos)
     
     return {"job_id": job_id}
 
 # --- 2. LA FUNCIÓN QUE HACE EL TRABAJO DURO (POR DETRÁS) ---
-def transcribir_en_fondo(job_id: str, email: str, filename: str, content_type: str, audio_bytes: bytes, motor: str):
+def transcribir_en_fondo(job_id: str, email: str, filename: str, content_type: str, audio_bytes: bytes, motor: str, nuevos_creditos: int):
+    costo_creditos = 2 if motor == "groq_voces" else 1
     try:
+        # 1. Subir a Cloudflare R2 PRIMERO
+        ct = content_type if content_type and content_type.startswith('audio') else 'audio/mpeg'
+        nombre_archivo_nube = f"{uuid.uuid4()}_{filename.replace(' ', '_')}"
+        s3_client.put_object(Bucket=BUCKET_NAME, Key=nombre_archivo_nube, Body=audio_bytes, ContentType=ct)
+        url_audio = f"{R2_PUBLIC_URL}/{nombre_archivo_nube}"
+        
+        texto_plano = ""
+        texto_html = ""
+
+        # 2. TRANSCRIPCIÓN CON GROQ (Para todos los motores)
         extension = filename.split('.')[-1].lower()
         temp_original = f"temp_{job_id}.{extension}"
         with open(temp_original, "wb") as f: f.write(audio_bytes)
@@ -90,59 +113,46 @@ def transcribir_en_fondo(job_id: str, email: str, filename: str, content_type: s
         
         chunks = sorted(glob.glob(f"temp_chunk_{job_id}_*.wav"))
         total_chunks = len(chunks)
-        texto_plano = ""
-        texto_html = ""
         
-        # Elegimos el modelo de Groq según lo que pidió el usuario
         modelo_groq = "whisper-large-v3-turbo" if motor == "groq_turbo" else "whisper-large-v3"
-            
+        
         for i, chunk_filename in enumerate(chunks):
-                ESTADOS_TRANSCRIPCION[job_id] = {
-                    "estado": "transcribiendo", 
-                    "actual": i + 1, 
-                    "total": total_chunks,
-                    "porcentaje": 10 + int(((i + 1) / total_chunks) * 70)
-                }
-                
-                with open(chunk_filename, "rb") as audio_file:
-                    # ¡ACÁ ES DONDE DECÍA model_groq O modelo_groq! TIENE QUE DECIR model=
-                    response_groq = client_groq.audio.transcriptions.create(
-                        model=modelo_groq, 
-                        file=audio_file, 
-                        response_format="verbose_json"
-                    )
+            ESTADOS_TRANSCRIPCION[job_id] = {
+                "estado": "transcribiendo", 
+                "actual": i + 1, 
+                "total": total_chunks,
+                "porcentaje": 10 + int(((i + 1) / total_chunks) * 70)
+            }
             
-                offset_segundos = i * 600.0
-                for segmento in response_groq.segments:
-                    inicio_real = segmento['start'] + offset_segundos
-                    minutos = int(inicio_real // 60)
-                    segundos = int(inicio_real % 60)
-                    texto_plano += f"[{minutos:02d}:{segundos:02d}] {segmento['text']}\n"
-                    texto_html += f"<span class='minuto' onclick='saltarA({inicio_real})'>[{minutos:02d}:{segundos:02d}]</span> {segmento['text']}<br>"
-                
-                os.remove(chunk_filename)
+            with open(chunk_filename, "rb") as audio_file:
+                response_groq = client_groq.audio.transcriptions.create(
+                    model=modelo_groq, 
+                    file=audio_file, 
+                    response_format="verbose_json"
+                )
+            
+            offset_segundos = i * 600.0
+            for segmento in response_groq.segments:
+                inicio_real = segmento['start'] + offset_segundos
+                minutos = int(inicio_real // 60)
+                segundos = int(inicio_real % 60)
+                texto_plano += f"[{minutos:02d}:{segundos:02d}] {segmento['text']}\n"
+                texto_html += f"<span class='minuto' onclick='saltarA({inicio_real})'>[{minutos:02d}:{segundos:02d}]</span> {segmento['text']}<br>"
+            
+            os.remove(chunk_filename)
         
         ESTADOS_TRANSCRIPCION[job_id] = {"estado": "guardando", "porcentaje": 90}
-        
-        ct = content_type if content_type and content_type.startswith('audio') else 'audio/mpeg'
-        nombre_archivo_nube = f"{uuid.uuid4()}_{filename}"
-        s3_client.put_object(Bucket=BUCKET_NAME, Key=nombre_archivo_nube, Body=audio_bytes, ContentType=ct)
-        url_audio = f"{R2_PUBLIC_URL}/{nombre_archivo_nube}"
-        
+
+        # 3. GUARDADO EN BASE DE DATOS
         titulo_limpio = os.path.splitext(filename)[0]
         supabase.table("transcripciones").insert({
             "user_email": email, 
             "titulo": titulo_limpio, 
             "texto": texto_plano, 
             "audio_url": url_audio,
-            "motor_usado": motor  # <-- AGREGÁ ESTO
+            "motor_usado": motor
         }).execute()
         
-        response_db = supabase.table("usuarios").select("creditos").eq("email", email).execute()
-        nuevos_creditos = response_db.data[0]['creditos'] - 1
-        supabase.table("usuarios").update({"creditos": nuevos_creditos}).eq("email", email).execute()
-        
-        # Guardamos el resultado final para que la página lo pueda pedir
         ESTADOS_TRANSCRIPCION[job_id] = {
             "estado": "terminado", 
             "porcentaje": 100,
@@ -152,6 +162,8 @@ def transcribir_en_fondo(job_id: str, email: str, filename: str, content_type: s
             }
         }
     except Exception as e:
+        # Si algo falla a mitad de camino, LE DEVOLVEMOS EL CRÉDITO AL USUARIO
+        supabase.table("usuarios").update({"creditos": nuevos_creditos + costo_creditos}).eq("email", email).execute()
         ESTADOS_TRANSCRIPCION[job_id] = {"estado": "error", "mensaje": str(e)}
 
 # --- 3. RUTA QUE LE DICE A LA PÁGINA CÓMO VA ---
